@@ -45,12 +45,25 @@ ${baseCss}
   .miniform input.nm{flex:1; min-width:140px;} .miniform input.rl{width:150px;}
   .miniform input.pn{width:90px; letter-spacing:2px; font-variant-numeric:tabular-nums;}
   .miniform button{background:var(--wald); color:#fff; border:none; border-radius:10px; padding:11px 16px; font-size:15px; cursor:pointer;}
-  .pin{font-variant-numeric:tabular-nums; letter-spacing:2px; color:var(--clay); font-size:15px;}
+  .pin{font-variant-numeric:tabular-nums; letter-spacing:2px; color:var(--clay); font-size:15px; white-space:nowrap;}
   .iconbtn{border:none; background:none; cursor:pointer; font-size:14px; padding:6px 8px;}
   .iconbtn.edit{color:var(--wald);} .iconbtn.del{color:var(--rot);}
   .rowinput{padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px;}
   .rowinput.nm{flex:1; min-width:100px;} .rowinput.rl{width:130px;} .rowinput.pn{width:70px; letter-spacing:2px;}
   .hint{font-size:13px; color:var(--grey); margin:2px 0 10px; line-height:1.5;}
+
+  /* --- Mobil --- */
+  @media (max-width:480px){
+    .topbar{padding:10px 12px; gap:8px;}
+    .topbar .ttl{font-size:18px;}
+    .tabs{padding:12px 10px 0; gap:6px;}
+    .tab{padding:9px 12px; font-size:14px;}
+    .body{padding:14px 12px;}
+    .miniform input.nm,.miniform input.rl{flex:1 1 100%;}
+  }
+  /* Nur die Bearbeiten-Zeile (mit Eingabefeldern) darf umbrechen, Anzeige-Zeilen nicht. */
+  .row:has(.rowinput){flex-wrap:wrap;}
+  .row:has(.rowinput) .rowinput.nm{flex:1 1 100%;}
 </style>
 </head>
 <body>

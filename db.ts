@@ -32,22 +32,63 @@ export function allocatePin(): string {
   throw new Error("keine freie PIN mehr");
 }
 
+// 4-stellige PIN ist Pflicht und muss aus genau 4 Ziffern bestehen (DB-seitig erzwungen).
+const PIN_CHECK = "pin GLOB '[0-9][0-9][0-9][0-9]'";
+
+function pinIsRequired(): boolean {
+  const cols = db.query("PRAGMA table_info(mitarbeiter)").all() as { name: string; notnull: number }[];
+  const pin = cols.find((c) => c.name === "pin");
+  return !!pin && pin.notnull === 1;
+}
+
 export function initDb() {
+  // Frisches Schema: PIN als 4-stelliges Pflichtfeld, eindeutig, DB-Constraint.
   db.run(`
     CREATE TABLE IF NOT EXISTS mitarbeiter (
       id   TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       role TEXT NOT NULL,
-      pin  TEXT
+      pin  TEXT NOT NULL UNIQUE CHECK (${PIN_CHECK})
     )
   `);
 
-  // Migration: bestehende DB ohne pin-Spalte nachrüsten.
+  // Migration: bestehende DB ohne pin-Spalte nachrüsten (zunächst nullable).
   if (!hasColumn("mitarbeiter", "pin")) {
     db.run("ALTER TABLE mitarbeiter ADD COLUMN pin TEXT");
   }
 
-  db.run("CREATE UNIQUE INDEX IF NOT EXISTS ux_mitarbeiter_pin ON mitarbeiter(pin)");
+  // Vor dem Erzwingen: fehlende/ungültige PINs auffüllen.
+  const invalid = db
+    .query(`SELECT id FROM mitarbeiter WHERE pin IS NULL OR NOT (${PIN_CHECK})`)
+    .all() as { id: string }[];
+  for (const row of invalid) {
+    db.prepare("UPDATE mitarbeiter SET pin = ? WHERE id = ?").run(allocatePin(), row.id);
+  }
+
+  // Migration: Alt-Tabelle (pin nullable) auf NOT NULL + CHECK umbauen (Tabellen-Rebuild).
+  if (!pinIsRequired()) {
+    db.run("PRAGMA foreign_keys = OFF");
+    db.run("BEGIN");
+    try {
+      db.run(`
+        CREATE TABLE mitarbeiter_new (
+          id   TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL,
+          pin  TEXT NOT NULL UNIQUE CHECK (${PIN_CHECK})
+        )
+      `);
+      db.run("INSERT INTO mitarbeiter_new (id, name, role, pin) SELECT id, name, role, pin FROM mitarbeiter");
+      db.run("DROP TABLE mitarbeiter");
+      db.run("ALTER TABLE mitarbeiter_new RENAME TO mitarbeiter");
+      db.run("COMMIT");
+    } catch (e) {
+      db.run("ROLLBACK");
+      throw e;
+    }
+    db.run("PRAGMA foreign_keys = ON");
+    console.log("🔧 Migration: PIN ist jetzt Pflichtfeld (4 Ziffern) in der DB");
+  }
 
   // Stempel-Ereignisse: 'in' = einstempeln, 'out' = ausstempeln, ts = Epoch-Millis.
   db.run(`
@@ -69,14 +110,6 @@ export function initDb() {
     insert.run(randomUUID(), "Victorio", "Inhaber", "1001");
     insert.run(randomUUID(), "Alice", "Service", "1002");
     console.log("🌱 Datenbank befüllt: Victorio (PIN 1001), Alice (PIN 1002)");
-  }
-
-  // Backfill: Altbestand ohne PIN bekommt automatisch eine.
-  const missing = db
-    .query("SELECT id FROM mitarbeiter WHERE pin IS NULL OR pin = ''")
-    .all() as { id: string }[];
-  for (const row of missing) {
-    db.prepare("UPDATE mitarbeiter SET pin = ? WHERE id = ?").run(allocatePin(), row.id);
   }
 }
 
