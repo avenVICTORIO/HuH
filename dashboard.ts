@@ -1,4 +1,4 @@
-import { baseCss } from "./styles";
+import { baseCss, iconHead } from "./styles";
 
 export const dashboardPage = /* html */ `<!DOCTYPE html>
 <html lang="de">
@@ -6,6 +6,7 @@ export const dashboardPage = /* html */ `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Team &amp; Zeiten – Hand aufs Herz</title>
+${iconHead}
 <style>
 ${baseCss}
   .topbar{display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5;}

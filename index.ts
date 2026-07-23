@@ -394,6 +394,23 @@ const server = Bun.serve({
     "/dashboard": um("/team"),
     "/logo.png": () => new Response(Bun.file("public/logo.png")),
 
+    // ---- Favicons, App-Icons & Manifest (erzeugt via `bun run icons`) ----
+    "/favicon.ico": () =>
+      new Response(Bun.file("public/favicon.ico"), {
+        headers: { "Content-Type": "image/x-icon", "Cache-Control": "public, max-age=86400" },
+      }),
+    "/site.webmanifest": () =>
+      new Response(Bun.file("public/site.webmanifest"), {
+        headers: { "Content-Type": "application/manifest+json", "Cache-Control": "public, max-age=86400" },
+      }),
+    "/icons/:datei": (req) => {
+      const datei = req.params.datei;
+      if (!/^[a-z0-9-]+\.png$/.test(datei)) return new Response("Not Found", { status: 404 });
+      return new Response(Bun.file(`public/icons/${datei}`), {
+        headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" },
+      });
+    },
+
     // ---- Reservierung: freie Zeiten eines Tages ----
     "/api/verfuegbarkeit": async (req) => {
       const q = new URL(req.url).searchParams;
@@ -1080,6 +1097,27 @@ const server = Bun.serve({
           "SELECT MAX(sortierung) AS m FROM karte_positionen WHERE gruppe_id = ?", daten.gruppe_id,
         );
         const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
+        // Speise-Positionen bekommen automatisch ihr Küchen-Gericht (Match per Name oder neu),
+        // damit Karte und Küche gar nicht erst auseinanderlaufen. Getränke brauchen keins.
+        if (!zeile.gericht_id) {
+          const gruppe = await eins<{ kapitel: string }>(
+            "SELECT kapitel FROM karte_gruppen WHERE id = ?", zeile.gruppe_id,
+          );
+          const istSpeise = KAPITEL_META.some((k) => k.id === gruppe?.kapitel && !k.getraenk);
+          if (istSpeise) {
+            const bestehend = await eins<{ id: string }>(
+              "SELECT id FROM gerichte WHERE lower(name) = lower(?)", zeile.name,
+            );
+            if (bestehend) zeile.gericht_id = bestehend.id;
+            else {
+              zeile.gericht_id = randomUUID();
+              await lauf(
+                "INSERT INTO gerichte (id, name, preis, aktiv) VALUES (?, ?, ?, 1)",
+                zeile.gericht_id, zeile.name, zeile.preise,
+              );
+            }
+          }
+        }
         await lauf(
           "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv, gericht_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           zeile.id, zeile.gruppe_id, zeile.name, zeile.text, zeile.option, zeile.tags,

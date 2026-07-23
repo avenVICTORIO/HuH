@@ -1,4 +1,4 @@
-import { baseCss, teamIcons } from "./styles";
+import { baseCss, iconHead, teamIcons } from "./styles";
 
 export const terminalPage = /* html */ `<!DOCTYPE html>
 <html lang="de">
@@ -8,6 +8,7 @@ export const terminalPage = /* html */ `<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Hand aufs Herz – Team-Terminal</title>
+${iconHead}
 <style>
 ${baseCss}
   body{ -webkit-user-select:none; user-select:none; }

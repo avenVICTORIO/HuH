@@ -22,6 +22,18 @@ export const baseCss = /* css */ `
   a{color:var(--wald);}
 `;
 
+/**
+ * Favicon-, App-Icon- und Manifest-Verdrahtung für alle Seiten (Gäste + intern).
+ * Die Dateien erzeugt `bun run icons` aus public/logo.png.
+ */
+export const iconHead = /* html */ `
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/icons/favicon-16.png" type="image/png" sizes="16x16">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="apple-mobile-web-app-title" content="Hand aufs Herz">`;
+
 /** Schlichte Linien-Icons für die internen Seiten – statt Emojis. */
 export const teamIcons: Record<string, string> = {
   aufgaben: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
