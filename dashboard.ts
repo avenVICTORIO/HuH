@@ -234,7 +234,14 @@ ${baseCss}
   .ge-verf .l{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--clay); font-weight:600;}
   .ge-verf.knapp .z{color:var(--rot);}
   .komp-chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
-  .komp-chip{font-size:12px; background:var(--sand-hell); color:var(--ink); border-radius:999px; padding:4px 11px;}
+  .komp-chip{font-size:12px; background:var(--sand-hell); color:var(--ink); border-radius:999px; padding:4px 11px; border:none; font-family:var(--sans);}
+  .komp-chip.klick{cursor:pointer; transition:background .15s;}
+  .komp-chip.klick:hover{background:var(--sand); }
+  .rz-kopf:hover .n{color:var(--wald);}
+  .rz-schritte{margin-top:10px; background:var(--creme); border:1px solid var(--line); border-radius:12px; padding:12px 16px;}
+  .rz-schritte-titel{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; font-weight:600; color:var(--amber); margin-bottom:6px;}
+  .rz-schritte ol{margin:0; padding-left:20px; font-size:14px; color:var(--ink); line-height:1.6;}
+  .rz-schritte li{margin-bottom:4px;}
   .zutaten-liste{margin:8px 0 0; padding:0; list-style:none; font-size:13.5px; color:var(--clay);}
   .zutaten-liste li{padding:3px 0; border-bottom:1px dashed var(--line);}
   .zutaten-liste li:last-child{border-bottom:0;}
@@ -1186,6 +1193,7 @@ $("btnKtGruppe").addEventListener("click",async ()=>{
 /* ===== VIEW: REZEPTE & GERICHTE (Team liest + bucht, Admin pflegt) ===== */
 let REZEPTE=[], GERICHTE=[], INV_ALLE=[];
 let geEdit=null, rzEdit=null; // {id|null, komponenten:[]} / {id|null, zutaten:[]}
+let rzDetail=null; // aufgeklapptes Rezept (Zubereitung)
 
 async function loadKueche(){
   const laden=[fetch("/api/rezepte").then(x=>x.json()), fetch("/api/gerichte").then(x=>x.json())];
@@ -1209,7 +1217,7 @@ function renderGerichte(){
       '<div class="res-info"><div class="n">'+esc(g.name)+(g.preis?' <small style="color:var(--clay)">'+esc(g.preis)+' €</small>':'')+
         (g.aufKarte?' <span class="tag in" title="Mit der Website-Karte verknüpft">⛓ Karte</span>':'')+'</div>'+
         (g.engpass?'<small>Engpass: '+esc(g.engpass)+'</small>':'<small class="notiz">Noch keine Rezepte hinterlegt</small>')+
-        '<div class="komp-chips">'+g.komponenten.map(k=>'<span class="komp-chip">'+esc(k.rezept)+(k.portionen!==1?' ×'+k.portionen:'')+'</span>').join("")+'</div>'+
+        '<div class="komp-chips">'+g.komponenten.map(k=>'<button class="komp-chip klick" data-rzsprung="'+k.rezept_id+'" title="Zum Rezept springen">'+esc(k.rezept)+(k.portionen!==1?' ×'+k.portionen:'')+' ↓</button>').join("")+'</div>'+
       '</div>'+
       '<div class="res-akt">'+
         (g.komponenten.length?'<button class="ok" data-gekochen="'+g.id+'">1× verkauft</button>':'')+
@@ -1244,11 +1252,19 @@ function geEditKarte(g){
 function renderRezepte(){
   let html=REZEPTE.map(r=>{
     if(rzEdit && rzEdit.id===r.id) return rzEditKarte(r);
-    return '<div class="card row">'+
-      '<div class="res-info"><div class="n">'+esc(r.name)+' <small style="color:var(--clay)">ergibt '+r.ergibt+' Portionen</small></div>'+
+    const offen=rzDetail===r.id;
+    const schritte=(r.zubereitung||"").split("\\n").map(s=>s.trim()).filter(Boolean);
+    return '<div class="card row" data-rzanker="'+r.id+'" style="align-items:flex-start'+(offen?'; border-color:var(--wald-hell)':'')+'">'+
+      '<div class="res-info rz-kopf" data-rzauf="'+r.id+'" title="Für die Zubereitung aufklappen" style="cursor:pointer">'+
+        '<div class="n">'+(offen?"▾ ":"▸ ")+esc(r.name)+' <small style="color:var(--clay)">Ansatz ergibt '+r.ergibt+' Portionen</small></div>'+
         (r.notiz?'<small class="notiz">„'+esc(r.notiz)+'“</small>':'')+
         '<ul class="zutaten-liste">'+r.zutaten.map(z=>'<li><b>'+z.menge+' '+esc(z.einheit)+'</b> '+esc(z.zutat)+'</li>').join("")+
         (r.zutaten.length?'':'<li style="font-style:italic">noch keine Zutaten</li>')+'</ul>'+
+        (offen?'<div class="rz-schritte"><div class="rz-schritte-titel">Zubereitung</div>'+
+          (schritte.length
+            ?'<ol>'+schritte.map(s=>'<li>'+esc(s)+'</li>').join("")+'</ol>'
+            :'<p style="font-style:italic; color:var(--grey); margin:6px 0 0">Noch keine Anleitung hinterlegt'+(ME.admin?' – über „Bearbeiten“ ergänzen.':'.')+'</p>')+
+        '</div>':'')+
       '</div>'+
       (ME.admin?'<div class="res-akt">'+
         '<button data-rzedit="'+r.id+'">Bearbeiten</button>'+
@@ -1265,10 +1281,13 @@ function rzEditKarte(r){
     '<div class="edit-zeile">'+
       '<input id="rzName" placeholder="Rezeptname (z. B. Pilz-Rahmsoße)" value="'+esc(r?r.name:"")+'" style="flex:1; min-width:180px">'+
       '<span style="font-size:12px; color:var(--grey)">ergibt</span>'+
-      '<input type="number" id="rzErgibt" value="'+(r?r.ergibt:4)+'" min="1" max="100" style="width:70px">'+
+      '<input type="number" id="rzErgibt" value="'+(r?r.ergibt:20)+'" min="1" max="100" style="width:70px">'+
       '<span style="font-size:12px; color:var(--grey)">Portionen</span>'+
     '</div>'+
     '<div class="edit-zeile"><input id="rzNotiz" placeholder="Notiz (optional)" value="'+esc(r&&r.notiz?r.notiz:"")+'" style="flex:1"></div>'+
+    '<div class="edit-zeile"><textarea id="rzZubereitung" placeholder="Zubereitung – ein Schritt pro Zeile" '+
+      'style="flex:1; min-height:110px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:13.5px; font-family:var(--sans); background:var(--card); color:var(--ink); resize:vertical">'+
+      esc(r&&r.zubereitung?r.zubereitung:"")+'</textarea></div>'+
     rzEdit.zutaten.map((z,i)=>
       '<div class="edit-zeile">'+
         '<select data-rzzi="'+i+'" style="min-width:210px">'+invOpt(z.inventar_id)+'</select>'+
@@ -1296,12 +1315,24 @@ function rzEditLesen(){
     menge:Number(document.querySelector('[data-rzzm="'+i+'"]').value)||0,
   }));
   return {name:$("rzName").value.trim(), ergibt:Number($("rzErgibt").value),
-    notiz:$("rzNotiz").value.trim(), zutaten:rzEdit.zutaten};
+    notiz:$("rzNotiz").value.trim(), zubereitung:$("rzZubereitung").value.trim(),
+    zutaten:rzEdit.zutaten};
 }
 
 document.getElementById("v-rezepte").addEventListener("click",async e=>{
+  // Rezept-Kopf klappt die Zubereitung auf/zu.
+  const kopf=e.target.closest("[data-rzauf]");
+  if(kopf && !e.target.closest("button")){
+    rzDetail=rzDetail===kopf.dataset.rzauf?null:kopf.dataset.rzauf;
+    return renderRezepte();
+  }
   const b=e.target.closest("button"); if(!b) return;
   const d=b.dataset;
+  if(d.rzsprung){ // Komponenten-Chip am Gericht -> Rezept aufklappen und hinscrollen
+    rzDetail=d.rzsprung; renderRezepte();
+    document.querySelector('[data-rzanker="'+d.rzsprung+'"]')?.scrollIntoView({behavior:"smooth",block:"center"});
+    return;
+  }
 
   if(d.gekochen!=null){
     const r=await fetch("/api/gerichte/"+d.gekochen+"/kochen",{method:"POST",

@@ -99,8 +99,9 @@ function rezeptBody(b: Record<string, unknown> | null): kueche.NeuesRezept {
   const zutaten = Array.isArray(b?.zutaten) ? b!.zutaten : [];
   return {
     name: text(b?.name, 80),
-    ergibt: Number(b?.ergibt ?? 4),
+    ergibt: Number(b?.ergibt ?? 20),
     notiz: text(b?.notiz, 500) || null,
+    zubereitung: text(b?.zubereitung, 4000) || null,
     zutaten: zutaten
       .map((z: Record<string, unknown>) => ({ inventar_id: text(z?.inventar_id, 64), menge: Number(z?.menge) }))
       .filter((z) => z.inventar_id),

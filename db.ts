@@ -293,6 +293,12 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
         FROM gerichte g WHERE lower(g.name) = lower(kp.name);
     `,
   },
+  {
+    id: "011-rezept-zubereitung",
+    sql: /* sql */ `
+      ALTER TABLE rezepte ADD COLUMN zubereitung TEXT;
+    `,
+  },
 ];
 
 async function migrieren() {
@@ -679,6 +685,183 @@ async function kartenKuecheSaeen() {
   console.log(`🍽️  Karte↔Küche↔Inventar geseedet: ${verdrahtet} Gerichte mit Rezepten verdrahtet`);
 }
 
+/**
+ * Einmalig: Rezepte auf Gastro-Ansätze heben (ergibt 20 statt 4, Mengen ×5 –
+ * die Verfügbarkeits-Rechnung bleibt identisch) und Zubereitungsschritte
+ * hinterlegen (eine Zeile = ein Schritt).
+ */
+async function rezeptDetailsSaeen() {
+  if (await eins("SELECT 1 AS x FROM einstellungen WHERE k = 'rezepte_details'")) return;
+
+  // 1) Skalieren: alle 4er-Seed-Ansätze -> 20er-Ansatz.
+  const kleine = await alle<{ id: string }>("SELECT id FROM rezepte WHERE ergibt = 4");
+  for (const r of kleine) {
+    await lauf("UPDATE rezepte SET ergibt = 20 WHERE id = ?", r.id);
+    await lauf("UPDATE rezept_zutaten SET menge = menge * 5 WHERE rezept_id = ?", r.id);
+  }
+
+  // 2) Zubereitung je Rezept (nur setzen, wo noch nichts steht).
+  const Z: [string, string[]][] = [
+    ["Kässpätzle-Basis", [
+      "Mehl, Eier, Wasser und Salz zu einem zähen Teig schlagen, 10 Minuten ruhen lassen.",
+      "Teig portionsweise vom Brett in siedendes Salzwasser schaben, aufsteigen lassen und abschöpfen.",
+      "Spätzle lagenweise mit der Bergkäsemischung in eine warme Schüssel schichten.",
+      "Mit zerlassener Butter übergießen und sofort heiß halten.",
+    ]],
+    ["Schmelzzwiebeln", [
+      "Zwiebeln in feine Ringe schneiden.",
+      "In Butter bei mittlerer Hitze 15–20 Minuten goldbraun schmelzen, nicht rösten.",
+      "Leicht salzen und warm halten.",
+    ]],
+    ["Breznknödel-Basis", [
+      "Brezn in dünne Scheiben schneiden und mit warmer Milch übergießen.",
+      "Eier, gedünstete Zwiebeln und Petersilie untermengen, 15 Minuten ziehen lassen.",
+      "Masse in Rollen wickeln (Folie/Tuch) und 25 Minuten sieden.",
+      "Zum Anrichten in Scheiben schneiden und in Butter anbraten.",
+    ]],
+    ["Pilz-Rahmsoße", [
+      "Pilze putzen, vierteln und in Butter kräftig anbraten.",
+      "Zwiebeln zugeben, glasig dünsten, mit Sahne ablöschen.",
+      "10 Minuten einkochen, mit Salz, Pfeffer und Petersilie abschmecken.",
+    ]],
+    ["Beilagensalat", [
+      "Salatmix waschen und trocken schleudern.",
+      "Kirschtomaten halbieren, Gurken hobeln.",
+      "Erst kurz vor dem Anrichten mit Hausdressing marinieren.",
+    ]],
+    ["Brezn & Brot", [
+      "Brezn und Wurzelbrot am Nachmittag anschneiden.",
+      "Pro Teller frisch im Korb mit Butterflocke anrichten.",
+    ]],
+    ["Bratkartoffeln", [
+      "Kartoffeln als Pellkartoffeln vorkochen, ausdampfen lassen und in Scheiben schneiden.",
+      "In Butterschmalz goldbraun und knusprig braten.",
+      "Mit Salz und gehackten Marktkräutern schwenken.",
+    ]],
+    ["Kartoffel-Pastinaken-Stampf", [
+      "Kartoffeln und Pastinaken weich kochen und abgießen.",
+      "Mit Butter grob stampfen – Struktur behalten.",
+      "Mit Salz und Muskat abschmecken, heiß halten.",
+    ]],
+    ["Vegane Bratensoße", [
+      "Zwiebeln dunkel rösten, Gemüsereste und etwas Rotkohl mitrösten.",
+      "Mit Gemüsebrühe auffüllen und 45 Minuten kräftig einkochen.",
+      "Passieren, binden und mit Pfeffer abschmecken.",
+    ]],
+    ["Rotkohlsalat", [
+      "Rotkohl fein hobeln und mit Salz kneten.",
+      "Mit Apfelstiften, Essig und Kürbiskernöl marinieren.",
+      "Mindestens 2 Stunden durchziehen lassen.",
+    ]],
+    ["Kräuter-Pilze", [
+      "Pilze in grobe Stücke schneiden.",
+      "Sehr heiß in Butter anbraten, erst am Ende salzen.",
+      "Mit reichlich gehackten Kräutern schwenken.",
+    ]],
+    ["Aufstrich-Trio", [
+      "Kartoffeln weich kochen, stampfen und mit Kräutern zum Aufstrich rühren.",
+      "Bete fein reiben, mit Meerrettich und Essig abschmecken.",
+      "Vegane ‚Leberwurst' aus dem Ansatz kalt stellen; alle drei nocken und anrichten.",
+    ]],
+    ["Obazda-Teller", [
+      "Obazda-Ansatz 30 Minuten vor Service temperieren.",
+      "Mit roten Zwiebelringen, Essiggurkerl und Radieserl anrichten.",
+      "Mit Schnittlauch und Paprikapulver vollenden.",
+    ]],
+    ["Röstkartoffeln-Basis", [
+      "Kartoffeln rustikal würfeln und in Butterschmalz knusprig rösten.",
+      "Kräuterdip aus Sauerrahm und Marktkräutern anrühren.",
+      "Kartoffeln salzen, mit Petersilie bestreuen, Dip separat reichen.",
+    ]],
+    ["Gegrillte Wassermelone", [
+      "Melone in dicke Steaks schneiden und trocken tupfen.",
+      "Auf dem heißen Grill je Seite 2 Minuten markieren.",
+      "Mit Rucola, karamellisierten Trauben und Feta anrichten, Kürbiskernöl und Limette darüber.",
+    ]],
+    ["Ziegenkäse auf Bete", [
+      "Bete garen, würfeln und als Tatar mit Essig und Öl abschmecken.",
+      "Ziegenkäse-Taler kurz unter dem Salamander gratinieren.",
+      "Tatar anrichten, Käse aufsetzen, Walnüsse, Honig und Kräuteröl darüber, Brotchips dazu.",
+    ]],
+    ["Forellen-Tatar", [
+      "Geräucherte Forelle fein würfeln, Gräten prüfen.",
+      "Mit eingelegten Zwiebeln, Dill und Zitrone abschmecken.",
+      "Im Ring anrichten, Brotchips seitlich anlegen.",
+    ]],
+    ["Salat mit Ziegenkäse", [
+      "Ziegenkäse-Taler mit Honig glasieren und warm gratinieren.",
+      "Auf dem marinierten Salat platzieren, Walnüsse darüber.",
+    ]],
+    ["Salat mit Hähnchen", [
+      "Hähnchenbrust würzen und in Streifen scharf anbraten.",
+      "Kurz ruhen lassen und warm auf den Salat geben.",
+    ]],
+    ["Gurkenkaltschale", [
+      "Gurken schälen, entkernen und mit Sahne/Joghurt fein mixen.",
+      "Mit Dill, Schnittlauch und Zitrone abschmecken, kalt stellen.",
+      "Mit Kresse und einer Scheibe Wurzelbrot servieren.",
+    ]],
+    ["Blumenkohlsüppchen", [
+      "Blumenkohl in Röschen mit Zwiebeln anschwitzen.",
+      "Mit Brühe weich kochen, Sahne zugeben und fein mixen.",
+      "Mit gebratenen Pilzen und Kresse anrichten.",
+    ]],
+    ["Kein-Schweinsbraten", [
+      "Knollensellerie ganz salzen und 90 Minuten backen, bis er weich ist.",
+      "In dicke Tranchen schneiden und in der Pfanne kross braten.",
+      "Mit Stampf, veganer Bratensoße und Rotkohlsalat anrichten.",
+    ]],
+    ["Spitzkohl-Basis", [
+      "Spitzkohl vierteln, Strunk einschneiden.",
+      "Schnittflächen kräftig rösten, im Ofen 8 Minuten fertig garen.",
+      "Mit Röstkartoffeln, Kräuter-Pilzen und Bratensoße anrichten.",
+    ]],
+    ["Rahm-Geschnetzeltes-Basis", [
+      "Hähnchenbrust in Streifen schneiden und portionsweise scharf anbraten.",
+      "Aus Mehl und Eiern Spätzle schaben und kochen.",
+      "Fleisch in der Pilz-Rahmsoße glasieren und mit Spätzle servieren.",
+    ]],
+    ["Wild-Bolognese", [
+      "Wild-Hackfleisch krümelig anbraten, Zwiebeln zugeben.",
+      "Mit Rotwein und Tomate ablöschen und 60 Minuten schmoren.",
+      "Pasta al dente kochen, mit Soße, Parmesan und Kräutern anrichten.",
+    ]],
+    ["Wildfleischpflanzerl-Basis", [
+      "Wild-Hack mit Eiern, gedünsteten Zwiebeln und Gewürzen verkneten.",
+      "Pflanzerl formen und von beiden Seiten braten, im Ofen ziehen lassen.",
+      "Mit Marktgemüse, Stampf und Wildjus servieren.",
+    ]],
+    ["Hirschragout-Basis", [
+      "Hirschkalbskeule würfeln und portionsweise scharf anbraten.",
+      "Zwiebeln rösten, mit Rotwein ablöschen, Wildfond angießen.",
+      "2 Stunden sanft schmoren, bis das Fleisch zerfällt; abschmecken.",
+    ]],
+    ["Bienenstich-Tiramisu-Basis", [
+      "Löffelbiskuit mit Rum tränken und in Gläser schichten.",
+      "Mascarpone mit geschlagener Sahne und Tonka zur Creme heben.",
+      "Schichten wiederholen, kalt stellen, mit Mandelkrokant abdecken.",
+    ]],
+    ["Strudel-Basis", [
+      "Äpfel in Zimtzucker schwenken (Füllung je nach Saison wechseln).",
+      "Strudelteig füllen, einrollen und mit Butter bestreichen.",
+      "Goldbraun backen, mit Vanillesoße und Puderzucker servieren.",
+    ]],
+    ["Pfannkuchen-Basis", [
+      "Aus Mehl, Eiern und Milch einen glatten Teig rühren, 20 Minuten ruhen lassen.",
+      "Dünn in Butter ausbacken.",
+      "Mit Apfelmus und Puderzucker anrichten.",
+    ]],
+  ];
+  for (const [name, schritte] of Z) {
+    await lauf(
+      "UPDATE rezepte SET zubereitung = ? WHERE lower(name) = lower(?) AND zubereitung IS NULL",
+      schritte.join("\n"), name,
+    );
+  }
+  await lauf("INSERT INTO einstellungen (k, v) VALUES ('rezepte_details', '1') ON CONFLICT (k) DO NOTHING");
+  console.log(`📖 Rezepte auf 20er-Ansätze skaliert (${kleine.length}) und Zubereitungen hinterlegt`);
+}
+
 // Beim Import initialisieren -> Server und postinstall bekommen eine fertige DB.
 await migrieren();
 await saeen();
@@ -687,3 +870,4 @@ await rezepteSaeen();
 await karteSaeen();
 await karteKuecheBackfill();
 await kartenKuecheSaeen();
+await rezeptDetailsSaeen();
