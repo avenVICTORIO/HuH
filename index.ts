@@ -310,7 +310,7 @@ const lastEvent = (id: string) =>
   );
 
 const isValidPin = (p: unknown): p is string =>
-  typeof p === "string" && /^\d{4}$/.test(p) && p !== "0009";
+  typeof p === "string" && /^\d{4}$/.test(p);
 
 /** Stempeln ist nur ±2 h um die geplante Schicht erlaubt. */
 const STEMPEL_PUFFER_MS = 2 * 60 * 60 * 1000;
@@ -1293,7 +1293,7 @@ const server = Bun.serve({
         let pin = (rawPin ?? "").toString().trim();
         if (pin === "") pin = await allocatePin();
         else if (!isValidPin(pin)) {
-          return Response.json({ error: "PIN muss 4 Ziffern sein (0009 reserviert)" }, { status: 400 });
+          return Response.json({ error: "PIN muss aus 4 Ziffern bestehen" }, { status: 400 });
         }
         if (await byPin(pin)) return Response.json({ error: "PIN bereits vergeben" }, { status: 409 });
         const row: Mitarbeiter = { id: randomUUID(), name: name.trim(), role: role.trim(), pin, admin: 0 };
@@ -1317,7 +1317,7 @@ const server = Bun.serve({
         }
         const p = (pin ?? "").toString().trim();
         if (!isValidPin(p)) {
-          return Response.json({ error: "PIN muss 4 Ziffern sein (0009 reserviert)" }, { status: 400 });
+          return Response.json({ error: "PIN muss aus 4 Ziffern bestehen" }, { status: 400 });
         }
         const clash = await byPin(p);
         if (clash && clash.id !== id) {

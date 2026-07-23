@@ -318,14 +318,14 @@ async function migrieren() {
 
 // --------------------------------------------------------------------- Seeds
 
-/** Erste freie 4-stellige PIN ab 1001 (0009 ist für Sonderzwecke reserviert). */
+/** Erste freie 4-stellige PIN ab 1001. */
 export async function allocatePin(): Promise<string> {
   const vergeben = new Set(
     (await alle<{ pin: string }>("SELECT pin FROM mitarbeiter")).map((r) => r.pin),
   );
   for (let n = 1001; n <= 9998; n++) {
     const p = String(n).padStart(4, "0");
-    if (p !== "0009" && !vergeben.has(p)) return p;
+    if (!vergeben.has(p)) return p;
   }
   throw new Error("keine freie PIN mehr");
 }
