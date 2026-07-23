@@ -6,5 +6,8 @@
     "postinstall": "bun run scripts/init-db.ts",
     "dev": "bun run --hot index.ts",
     "start": "bun run index.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4"
   }
 }
