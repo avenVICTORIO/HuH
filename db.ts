@@ -283,6 +283,16 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       CREATE INDEX ix_kp_gruppe ON karte_positionen(gruppe_id, sortierung);
     `,
   },
+  {
+    id: "010-karte-gericht-link",
+    sql: /* sql */ `
+      -- Verknüpfung Website-Karte <-> Küchen-Gericht (Rezepte/Verfügbarkeit).
+      ALTER TABLE karte_positionen ADD COLUMN gericht_id TEXT REFERENCES gerichte(id) ON DELETE SET NULL;
+      -- Bestehende Einträge automatisch über den Namen verheiraten.
+      UPDATE karte_positionen kp SET gericht_id = g.id
+        FROM gerichte g WHERE lower(g.name) = lower(kp.name);
+    `,
+  },
 ];
 
 async function migrieren() {

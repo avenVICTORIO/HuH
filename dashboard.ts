@@ -1043,6 +1043,7 @@ function ktPosZeile(p){
   return '<div class="kt-pos'+(p.aktiv?"":" kt-aus")+'" data-ktpid="'+p.id+'">'+
     '<div class="edit-zeile" style="margin-bottom:'+(offen?'6px':'4px')+'">'+
       '<span class="regel-griff" draggable="true" data-ktpgriff="'+p.id+'" title="Position sortieren">⠿</span>'+
+      (p.gericht_id?'<span title="Mit der Küche verknüpft – Name/Preis syncen, Verfügbarkeit steuert »heute aus«" style="color:var(--wald); font-size:13px">⛓</span>':'')+
       '<input data-ktpname="'+p.id+'" value="'+esc(p.name)+'" style="flex:1; min-width:160px">'+
       '<input data-ktppreise="'+p.id+'" value="'+esc(p.preise||"")+'" placeholder="Preis(e)" style="width:100px">'+
       '<label style="font-size:11px; color:var(--grey); display:flex; align-items:center; gap:4px">'+
@@ -1058,6 +1059,10 @@ function ktPosZeile(p){
       '<input data-ktpoption="'+p.id+'" value="'+esc(p.option||"")+'" placeholder="Option (z. B. vegan, ohne Feta − 2,5 €)" style="flex:1; min-width:180px">'+
       ["v","vg","gf"].map(t=>'<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktptag="'+p.id+'" value="'+t+'"'+((p.tags||"").split(",").includes(t)?" checked":"")+'> '+t.toUpperCase()+'</label>').join("")+
       '<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktpstern="'+p.id+'"'+(p.stern?" checked":"")+'> * Wild</label>'+
+      '<select data-ktpgericht="'+p.id+'" title="Mit Küchen-Gericht verknüpfen" style="min-width:170px">'+
+        '<option value="">– keine Küche –</option>'+
+        KT.gerichte.map(g=>'<option value="'+g.id+'"'+(g.id===p.gericht_id?" selected":"")+'>⛓ '+esc(g.name)+'</option>').join("")+
+      '</select>'+
     '</div>':'')+
   '</div>';
 }
@@ -1074,6 +1079,7 @@ function ktPosLesen(p){
     option:ktPosEdit===id?val("ktpoption"):p.option,
     tags:ktPosEdit===id?tags:(p.tags||""),
     stern:ktPosEdit===id?(chk("ktpstern")?1:0):p.stern,
+    gericht_id:ktPosEdit===id?(val("ktpgericht")||null):p.gericht_id,
     aktiv:chk("ktpaktiv")?1:0,
   };
 }
@@ -1199,7 +1205,8 @@ function renderGerichte(){
     const knapp=g.verfuegbar!=null && g.verfuegbar<10;
     return '<div class="card row">'+
       '<div class="ge-verf'+(knapp?" knapp":"")+'"><span class="z">'+(g.verfuegbar??"–")+'</span><span class="l">Portionen</span></div>'+
-      '<div class="res-info"><div class="n">'+esc(g.name)+(g.preis?' <small style="color:var(--clay)">'+esc(g.preis)+' €</small>':'')+'</div>'+
+      '<div class="res-info"><div class="n">'+esc(g.name)+(g.preis?' <small style="color:var(--clay)">'+esc(g.preis)+' €</small>':'')+
+        (g.aufKarte?' <span class="tag in" title="Mit der Website-Karte verknüpft">⛓ Karte</span>':'')+'</div>'+
         (g.engpass?'<small>Engpass: '+esc(g.engpass)+'</small>':'<small class="notiz">Noch keine Rezepte hinterlegt</small>')+
         '<div class="komp-chips">'+g.komponenten.map(k=>'<span class="komp-chip">'+esc(k.rezept)+(k.portionen!==1?' ×'+k.portionen:'')+'</span>').join("")+'</div>'+
       '</div>'+
