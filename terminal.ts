@@ -1,4 +1,4 @@
-import { baseCss } from "./styles";
+import { baseCss, teamIcons } from "./styles";
 
 export const terminalPage = /* html */ `<!DOCTYPE html>
 <html lang="de">
@@ -58,10 +58,52 @@ ${baseCss}
   .tiles{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
   .tile{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px 16px; text-align:center; cursor:pointer; transition:transform .06s;}
   .tile:active{transform:scale(.97);}
-  .tile .ico{font-size:34px; display:block; margin-bottom:8px;}
+  .tile .ico{display:block; width:34px; height:34px; margin:0 auto 10px; color:var(--amber);}
+  .tile .ico svg{width:100%; height:100%;}
   .tile .t{font-family:var(--serif); font-size:19px; color:var(--wald);}
   .tile.soon{opacity:.85;}
   .badge-soon{display:inline-block; margin-top:6px; font-size:11px; background:var(--creme); color:var(--clay); border:1px solid var(--line); border-radius:20px; padding:2px 10px;}
+  a.tile{display:block; text-decoration:none;}
+  .tile.werkzeug{border-color:var(--wald-hell); background:var(--card);}
+  .tile.werkzeug .ico{color:var(--wald);}
+  .tiles-trenner{
+    display:flex; align-items:center; gap:12px; margin:22px 0 12px;
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--grey); font-weight:500;
+  }
+  .tiles-trenner::before, .tiles-trenner::after{content:""; flex:1; height:1px; background:var(--line);}
+
+  /* ---------- ENTSCHEIDUNG (nach Login) ---------- */
+  #screen-entscheid{align-items:center; justify-content:center; padding:4vh 6vw; text-align:center;}
+  .ent-logo{width:96px; height:auto; opacity:.92; margin-bottom:2vh;}
+  .ent-hallo{font-family:var(--serif); font-size:clamp(30px,7vw,44px); color:var(--wald); margin-bottom:.6rem;}
+  .ent-status{font-size:clamp(15px,3.6vw,18px); color:var(--clay); margin:0 0 4vh; max-width:34ch;}
+  .ent-status b{color:var(--wald);}
+  .ent-primary{
+    display:block; width:min(420px,86vw); border:none; border-radius:18px; cursor:pointer;
+    padding:24px; font-family:var(--sans); font-size:clamp(18px,5vw,22px); font-weight:600;
+    color:#fff; letter-spacing:.3px; box-shadow:0 10px 28px -14px rgba(60,74,59,.55);
+  }
+  .ent-primary.start{background:var(--wald);} .ent-primary.start:active{background:#2C382C;}
+  .ent-primary.weiter{background:var(--wald);} .ent-primary.weiter:active{background:#2C382C;}
+  .ent-secondary{
+    display:block; width:min(420px,86vw); margin-top:14px; cursor:pointer;
+    background:none; border:1.5px solid var(--line); border-radius:18px; padding:18px;
+    font-family:var(--sans); font-size:clamp(14px,3.8vw,17px); color:var(--clay);
+  }
+  .ent-secondary.ende{border-color:var(--amber); color:var(--amber); font-weight:600;}
+  .ent-abbruch{margin-top:4vh; background:none; border:none; color:var(--grey); font-size:14px; cursor:pointer; text-decoration:underline; font-family:var(--sans);}
+
+  /* ---------- KLÄRUNG (vergessenes Ausstempeln) ---------- */
+  #screen-klaerung{align-items:center; justify-content:center; padding:4vh 6vw; text-align:center;}
+  .kl-karte{background:var(--card); border:1px solid var(--sand); border-radius:20px; padding:28px 26px; width:min(460px,90vw);}
+  .kl-titel{font-family:var(--serif); font-size:clamp(24px,5.5vw,32px); color:var(--amber); margin-bottom:10px;}
+  .kl-text{font-size:clamp(14px,3.6vw,16px); color:var(--clay); margin:0 0 22px; line-height:1.5;}
+  .kl-text b{color:var(--ink);}
+  .kl-zeit{display:flex; gap:12px; align-items:center; justify-content:center; margin-bottom:22px;}
+  .kl-zeit input{font-family:var(--serif); font-size:30px; padding:10px 14px; border:1.5px solid var(--line);
+    border-radius:14px; background:var(--creme); color:var(--wald); text-align:center;}
+  .kl-bestaetigen{width:100%; border:none; border-radius:16px; padding:18px; background:var(--wald);
+    color:var(--sand-hell); font-family:var(--sans); font-size:17px; font-weight:600; cursor:pointer;}
 
   /* ---------- TOAST ---------- */
   .toast{position:fixed; left:50%; top:50%; transform:translate(-50%,-50%) scale(.9);
@@ -91,7 +133,31 @@ ${baseCss}
     <div class="key action clear" data-k="clear">Löschen</div><div class="key" data-k="0">0</div>
     <div class="key action enter" data-k="enter">OK</div>
   </div>
-  <div class="loginfoot">Hand aufs Herz · Team-Terminal &nbsp;·&nbsp; <a href="/dashboard">Team &amp; Zeiten</a></div>
+  <div class="loginfoot">Hand aufs Herz · Team-Terminal &nbsp;·&nbsp; <a href="/team">Team &amp; Zeiten</a></div>
+</section>
+
+<!-- ============ KLÄRUNG: Ausstempeln vergessen ============ -->
+<section id="screen-klaerung" class="screen">
+  <div class="kl-karte">
+    <div class="kl-titel">Kurze Frage zuerst</div>
+    <p class="kl-text" id="klText"></p>
+    <div class="kl-zeit">
+      <span style="font-size:14px; color:var(--grey)">Feierabend um</span>
+      <input type="time" id="klZeit">
+      <span style="font-size:14px; color:var(--grey)">Uhr</span>
+    </div>
+    <button class="kl-bestaetigen" id="klOk">Zeit bestätigen</button>
+  </div>
+</section>
+
+<!-- ============ ENTSCHEIDUNG (nach Login) ============ -->
+<section id="screen-entscheid" class="screen">
+  <img class="ent-logo" src="/logo.png" alt="Hand aufs Herz">
+  <div class="ent-hallo" id="entWho">Servus!</div>
+  <p class="ent-status" id="entStatus"></p>
+  <button class="ent-primary" id="entPrimary"></button>
+  <button class="ent-secondary" id="entSecondary"></button>
+  <button class="ent-abbruch" id="entAbbruch">Abbrechen</button>
 </section>
 
 <!-- ============ HOME (nach Login) ============ -->
@@ -109,11 +175,28 @@ ${baseCss}
       <div class="dur" id="statDur">00:00:00</div>
       <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
     </div>
+    <template id="tplMitarbeiter">
+      <a class="tile werkzeug" href="/team#meine-schichten"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
+    </template>
+    <template id="tplWerkzeuge">
+      <a class="tile werkzeug" href="/team#meine-zeiten"><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+      <a class="tile werkzeug" href="/team#reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
+      <a class="tile werkzeug" href="/team#inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
+      <a class="tile werkzeug" href="/team#rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
+    </template>
+    <template id="tplAdmin">
+      <a class="tile werkzeug" href="/team#heute"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
+      <a class="tile werkzeug" href="/team#schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
+      <a class="tile werkzeug" href="/team#auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+      <a class="tile werkzeug" href="/team#karte"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
+      <a class="tile werkzeug" href="/team#team"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+    </template>
+    <div class="tiles" id="tilesWerkzeuge"></div>
+    <div class="tiles-trenner">Bald verfügbar</div>
     <div class="tiles">
-      <div class="tile soon" data-soon="Aufgaben"><span class="ico">✅</span><span class="t">Aufgaben</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Handbuch"><span class="ico">📖</span><span class="t">Handbuch</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Anleitungen"><span class="ico">🧽</span><span class="t">Anleitungen</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Rezepte &amp; Drinks"><span class="ico">🍸</span><span class="t">Rezepte &amp; Drinks</span><div class="badge-soon">kommt bald</div></div>
+      <div class="tile soon" data-soon="Aufgaben"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Aufgaben</span><div class="badge-soon">kommt bald</div></div>
+      <div class="tile soon" data-soon="Handbuch"><span class="ico">${teamIcons.handbuch}</span><span class="t">Handbuch</span><div class="badge-soon">kommt bald</div></div>
+      <div class="tile soon" data-soon="Anleitungen"><span class="ico">${teamIcons.anleitungen}</span><span class="t">Anleitungen</span><div class="badge-soon">kommt bald</div></div>
     </div>
   </div>
 </section>
@@ -124,7 +207,6 @@ ${baseCss}
 "use strict";
 const WD=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 const MO=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-const ADMIN_PIN="0009"; // öffnet Team & Zeiten (Dashboard)
 const p2=n=>String(n).padStart(2,"0");
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -170,24 +252,77 @@ let current=null; // {id,name,role,pin,clockedIn,since}
 async function submit(){
   if(entry.length!==4){ pinFail(); return; }
   const pin=entry; entry=""; renderDots();
-  if(pin===ADMIN_PIN){ location.href="/dashboard"; return; }
-  const res=await fetch("/api/lookup?pin="+encodeURIComponent(pin));
+  // Login = Session-Cookie setzen; damit kennt auch das Dashboard die Rolle.
+  const res=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
   if(!res.ok){ pinFail(); return; }
   current=await res.json();
-  await loginEmployee();
+  zeigeEntscheid();
 }
-async function loginEmployee(){
-  // Ankommen = automatisch einstempeln, falls noch nicht eingestempelt.
-  if(!current.clockedIn){
-    const d=await stamp("in");
-    current.clockedIn=true; current.since=d.ts;
-    toast("Servus "+esc(current.name)+"! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
+
+/* Vergessenes Ausstempeln: muss vor allem anderen geklärt werden. */
+function zeigeKlaerung(){
+  const k=current.klaerung;
+  const d=new Date(k.seit);
+  $("klText").innerHTML="Du bist seit <b>"+WD[d.getDay()]+", "+d.getDate()+". "+MO[d.getMonth()]+
+    " um "+hm(k.seit)+" Uhr</b> eingestempelt und hast dich nicht abgemeldet.<br>Wann war Feierabend?";
+  $("klZeit").value=k.vorschlag;
+  show("screen-klaerung");
+}
+$("klOk").addEventListener("click",async ()=>{
+  const zeit=$("klZeit").value;
+  if(!zeit) return;
+  const r=await fetch("/api/klaerung",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({zeit})});
+  const d=await r.json();
+  if(!r.ok){ toast(esc(d.fehler||"Das hat nicht geklappt."),"out",2600); return; }
+  toast("Danke! <span class='big'>Feierabend "+hm(d.ende)+" Uhr nachgetragen</span>","in");
+  current.clockedIn=false; current.since=null; current.klaerung=null;
+  zeigeEntscheid();
+});
+
+/* Login identifiziert nur – gestempelt wird bewusst, nie automatisch. */
+function zeigeEntscheid(){
+  if(current.klaerung){ zeigeKlaerung(); return; }
+  $("entWho").textContent="Servus, "+current.name+"!";
+  const primary=$("entPrimary"), secondary=$("entSecondary");
+  if(current.clockedIn){
+    $("entStatus").innerHTML="Deine Schicht läuft seit <b>"+hm(current.since)+" Uhr</b>.";
+    primary.textContent="Weiter zum Arbeitsbereich";
+    primary.className="ent-primary weiter";
+    primary.onclick=()=>{ renderHome(); show("screen-home"); };
+    secondary.textContent="Schicht beenden & abmelden";
+    secondary.className="ent-secondary ende";
+    secondary.onclick=async ()=>{
+      const d=await stamp("out");
+      if(!d) return;
+      toast("Pfiat di, "+esc(current.name)+"! <span class='big'>Ausgestempelt "+hm(d.ts)+" Uhr</span>","out");
+      sessionEnde();
+    };
+  }else{
+    $("entStatus").textContent="Schön, dass du da bist. Möchtest du deine Schicht starten?";
+    primary.textContent="Schicht starten";
+    primary.className="ent-primary start";
+    primary.onclick=async ()=>{
+      const d=await stamp("in");
+      if(!d) return;
+      current.clockedIn=true; current.since=d.ts;
+      toast("Servus "+esc(current.name)+"! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
+      renderHome(); show("screen-home");
+    };
+    secondary.textContent="Ohne Stempeln weiter";
+    secondary.className="ent-secondary";
+    secondary.onclick=()=>{ renderHome(); show("screen-home"); };
   }
-  renderHome();
-  show("screen-home");
+  show("screen-entscheid");
 }
+$("entAbbruch").addEventListener("click",sessionEnde);
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
+  // Werkzeug-Karten nach Rolle: alle sehen Zeiten + Reservierungen, Admins alles.
+  const ziel=$("tilesWerkzeuge");
+  ziel.innerHTML="";
+  if(!current.admin) ziel.appendChild($("tplMitarbeiter").content.cloneNode(true));
+  ziel.appendChild($("tplWerkzeuge").content.cloneNode(true));
+  if(current.admin) ziel.appendChild($("tplAdmin").content.cloneNode(true));
   if(current.clockedIn){
     $("statLbl").textContent="Eingestempelt seit";
     $("statSince").textContent=hm(current.since)+" Uhr";
@@ -208,30 +343,39 @@ function updateDuration(){
   $("statDur").textContent=p2(h)+":"+p2(m)+":"+p2(s);
 }
 
-/* ---------- Ein-/Ausstempeln ---------- */
+/* ---------- Ein-/Ausstempeln (Server prüft das ±2-h-Fenster der Schicht) ---------- */
 async function stamp(expected){
   const r=await fetch("/api/stamp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:current.pin})});
-  return r.json(); // {name,type,ts}
+  const d=await r.json(); // {name,type,ts} oder {fehler,klaerung?}
+  if(!r.ok){
+    if(d.klaerung){ current.klaerung=d.klaerung; zeigeKlaerung(); }
+    else toast(esc(d.fehler||"Das geht gerade nicht."),"out",3200);
+    return null;
+  }
+  return d;
 }
 $("btnStamp").addEventListener("click",async ()=>{
   if(!current) return;
   if(current.clockedIn){
     const d=await stamp("out");
+    if(!d) return;
     current.clockedIn=false;
     toast("Pfiat di, "+esc(current.name)+"! <span class='big'>Ausgestempelt "+hm(d.ts)+" Uhr</span>","out");
-    setTimeout(()=>{ current=null; show("screen-login"); },1600);
+    setTimeout(sessionEnde,1600);
   }else{
     const d=await stamp("in");
+    if(!d) return;
     current.clockedIn=true; current.since=d.ts;
     toast("Willkommen zurück! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
     renderHome();
   }
 });
-$("btnLogout").addEventListener("click",()=>{ current=null; show("screen-login"); });
+function sessionEnde(){ fetch("/api/session",{method:"DELETE"}); current=null; show("screen-login"); }
+$("btnLogout").addEventListener("click",sessionEnde);
 
 /* ---------- Platzhalter-Kacheln ---------- */
 document.querySelectorAll(".tile.soon").forEach(t=>{
-  t.addEventListener("click",()=>toast(esc(t.dataset.soon)+" richten wir als Nächstes ein 🙂","",1800));
+  t.addEventListener("click",()=>toast(esc(t.dataset.soon)+" richten wir als Nächstes ein.","",1800));
 });
 </script>
 </body>
