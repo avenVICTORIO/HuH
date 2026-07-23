@@ -1,4 +1,5 @@
 import { brandCss, fontLink } from "./brand";
+import { iconHead } from "../styles";
 import { HAUS, ZEITEN_TEXT } from "./info";
 
 export const NAV = [
@@ -114,6 +115,7 @@ export const seite = ({ titel, beschreibung, aktiv, css = "", js = "", inhalt }:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="${beschreibung}">
 <meta name="theme-color" content="#3C4A3B">
+${iconHead}
 <meta property="og:title" content="${titel}">
 <meta property="og:description" content="${beschreibung}">
 <meta property="og:type" content="restaurant.restaurant">

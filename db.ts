@@ -493,9 +493,197 @@ async function karteSaeen() {
   console.log("🌱 Speisekarte in die Datenbank importiert");
 }
 
+/**
+ * Einmaliger Abgleich Karte -> Küche: Jede Speise-Position der Website bekommt
+ * ihr Küchen-Gericht (verknüpft), damit beide Welten denselben Bestand haben.
+ * Rezepte/Zutaten pflegt der Admin danach nach und nach.
+ */
+async function karteKuecheBackfill() {
+  const fertig = await eins("SELECT 1 AS x FROM einstellungen WHERE k = 'karte_gerichte_backfill'");
+  if (fertig) return;
+  const { KAPITEL_META } = await import("./site/karte-daten");
+  const speiseKapitel = KAPITEL_META.filter((k) => !k.getraenk).map((k) => k.id);
+  const offen = await alle<{ id: string; name: string; preise: string | null }>(
+    `SELECT p.id, p.name, p.preise
+       FROM karte_positionen p JOIN karte_gruppen g ON g.id = p.gruppe_id
+      WHERE p.gericht_id IS NULL AND p.aktiv = 1
+        AND g.kapitel IN (${speiseKapitel.map(() => "?").join(",")})`,
+    ...speiseKapitel,
+  );
+  let angelegt = 0, verknuepft = 0;
+  for (const p of offen) {
+    let gericht = await eins<{ id: string }>(
+      "SELECT id FROM gerichte WHERE lower(name) = lower(?)", p.name,
+    );
+    if (!gericht) {
+      gericht = { id: randomUUID() };
+      await lauf(
+        "INSERT INTO gerichte (id, name, preis, aktiv) VALUES (?, ?, ?, 1)",
+        gericht.id, p.name, p.preise,
+      );
+      angelegt++;
+    }
+    await lauf("UPDATE karte_positionen SET gericht_id = ? WHERE id = ?", gericht.id, p.id);
+    verknuepft++;
+  }
+  await lauf("INSERT INTO einstellungen (k, v) VALUES ('karte_gerichte_backfill', '1') ON CONFLICT (k) DO NOTHING");
+  if (verknuepft) console.log(`🔗 Karte↔Küche abgeglichen: ${verknuepft} verknüpft, ${angelegt} Gerichte neu`);
+}
+
+/**
+ * Einmalig: Küche und Inventar auf den Stand der echten Karte bringen.
+ * Jedes Speise-Gericht bekommt ein Hauptrezept mit Zutaten aus dem Inventar
+ * (plus geteilte Komponenten) – damit stimmen Verfügbarkeit und „heute aus“
+ * von Tag eins an mit der Website überein.
+ */
+async function kartenKuecheSaeen() {
+  if (await eins("SELECT 1 AS x FROM einstellungen WHERE k = 'karte_kueche_seed'")) return;
+
+  // 1) Inventar-Artikel, die die Karte tatsächlich braucht (nur fehlende anlegen).
+  const ARTIKEL: [string, string, number, string, number | null, string | null][] = [
+    ["kueche", "Obazda (angesetzt)", 4, "kg", 3, null],
+    ["kueche", "Brezn", 40, "Stück", 60, "täglich frisch"],
+    ["kueche", "Rote & Gelbe Bete", 8, "kg", 6, null],
+    ["kueche", "Meerrettich", 1.5, "kg", 1, null],
+    ["kueche", "Wassermelone", 6, "Stück", 4, "Saison"],
+    ["kueche", "Feta", 3, "kg", 2, null],
+    ["kueche", "Rucola", 2, "kg", 2, "Früchte Feldbrach"],
+    ["kueche", "Trauben", 3, "kg", 2, null],
+    ["kueche", "Ziegenkäse-Rolle", 8, "Stück", 6, null],
+    ["kueche", "Walnüsse", 2, "kg", 1.5, null],
+    ["kueche", "Honig", 4, "Gläser", 3, null],
+    ["kueche", "Geräucherte Forelle", 3, "kg", 2, "Fischzucht Aumühle"],
+    ["kueche", "Salatmix", 5, "kg", 6, "Früchte Feldbrach"],
+    ["kueche", "Kirschtomaten", 4, "kg", 3, null],
+    ["kueche", "Gurken", 12, "Stück", 10, null],
+    ["kueche", "Hähnchenbrust", 8, "kg", 6, "Metzgerei Magnus Bauch"],
+    ["kueche", "Blumenkohl", 6, "Stück", 5, null],
+    ["kueche", "Spitzkohl", 7, "Stück", 5, null],
+    ["kueche", "Pastinaken", 6, "kg", 5, null],
+    ["kueche", "Wild-Hackfleisch", 10, "kg", 8, "eigene Jagd"],
+    ["kueche", "Pasta", 8, "kg", 6, null],
+    ["kueche", "Parmesan", 2.5, "kg", 2, null],
+    ["kueche", "Löffelbiskuit", 10, "Packungen", 8, null],
+    ["kueche", "Mascarpone", 5, "kg", 4, null],
+    ["kueche", "Mandelkrokant", 2, "kg", 1.5, null],
+    ["kueche", "Strudelteig", 8, "Rollen", 6, null],
+    ["kueche", "Äpfel", 10, "kg", 8, null],
+    ["kueche", "Puderzucker", 3, "kg", 2, null],
+    ["kueche", "Marktkräuter", 3, "Bund", 4, "täglich frisch"],
+  ];
+  for (const [bereich, name, menge, einheit, soll, notiz] of ARTIKEL) {
+    if (await eins("SELECT 1 AS x FROM inventar WHERE lower(name) = lower(?)", name)) continue;
+    await lauf(
+      "INSERT INTO inventar (id, bereich, name, menge, einheit, soll, notiz, aktualisiert) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      randomUUID(), bereich, name, menge, einheit, soll, notiz, Date.now(),
+    );
+  }
+
+  const invId = async (name: string) =>
+    (await eins<{ id: string }>("SELECT id FROM inventar WHERE lower(name) = lower(?)", name))?.id ?? null;
+  const rezeptId = async (name: string) =>
+    (await eins<{ id: string }>("SELECT id FROM rezepte WHERE lower(name) = lower(?)", name))?.id ?? null;
+
+  /** Rezept anlegen, falls es fehlt; Zutatennamen müssen im Inventar existieren. */
+  const rezept = async (name: string, ergibt: number, zutaten: [string, number][]) => {
+    if (await rezeptId(name)) return;
+    const id = randomUUID();
+    await lauf("INSERT INTO rezepte (id, name, ergibt, notiz) VALUES (?, ?, ?, NULL)", id, name, ergibt);
+    for (const [artikel, menge] of zutaten) {
+      const iid = await invId(artikel);
+      if (iid) await lauf(
+        "INSERT INTO rezept_zutaten (id, rezept_id, inventar_id, menge) VALUES (?, ?, ?, ?)",
+        randomUUID(), id, iid, menge,
+      );
+    }
+  };
+
+  // 2) Geteilte Komponenten (ein Ansatz = 4 Portionen).
+  await rezept("Beilagensalat", 4, [["Salatmix", 0.6], ["Kirschtomaten", 0.3], ["Gurken", 1]]);
+  await rezept("Brezn & Brot", 4, [["Brezn", 4], ["Wurzelbrot", 0.5]]);
+  await rezept("Bratkartoffeln", 4, [["Kartoffeln", 1.2], ["Butter", 0.1], ["Marktkräuter", 0.5]]);
+  await rezept("Kartoffel-Pastinaken-Stampf", 4, [["Kartoffeln", 1], ["Pastinaken", 0.5], ["Butter", 0.15]]);
+  await rezept("Vegane Bratensoße", 4, [["Zwiebeln", 0.3], ["Rotkohl", 0.1]]);
+  await rezept("Rotkohlsalat", 4, [["Rotkohl", 0.8], ["Äpfel", 0.2]]);
+  await rezept("Kräuter-Pilze", 4, [["Braune Pilze", 0.6], ["Marktkräuter", 0.5], ["Butter", 0.05]]);
+
+  // 3) Hauptrezepte der Karten-Gerichte.
+  const HAUPT: [string, [string, number][]][] = [
+    ["Aufstrich-Trio", [["Kartoffeln", 0.4], ["Rote & Gelbe Bete", 0.3], ["Meerrettich", 0.1], ["Marktkräuter", 0.5]]],
+    ["Obazda-Teller", [["Obazda (angesetzt)", 0.6], ["Zwiebeln", 0.2]]],
+    ["Röstkartoffeln-Basis", [["Kartoffeln", 1.4], ["Marktkräuter", 0.5], ["Sahne", 0.2]]],
+    ["Gegrillte Wassermelone", [["Wassermelone", 1], ["Feta", 0.3], ["Rucola", 0.2], ["Trauben", 0.3], ["Kürbiskernöl", 0.05]]],
+    ["Ziegenkäse auf Bete", [["Ziegenkäse-Rolle", 2], ["Rote & Gelbe Bete", 0.6], ["Walnüsse", 0.15], ["Honig", 0.3], ["Wurzelbrot", 0.3]]],
+    ["Forellen-Tatar", [["Geräucherte Forelle", 0.5], ["Zwiebeln", 0.1], ["Wurzelbrot", 0.3]]],
+    ["Salat mit Ziegenkäse", [["Ziegenkäse-Rolle", 2], ["Honig", 0.2], ["Walnüsse", 0.1]]],
+    ["Salat mit Hähnchen", [["Hähnchenbrust", 0.7]]],
+    ["Gurkenkaltschale", [["Gurken", 4], ["Sahne", 0.4], ["Marktkräuter", 0.5], ["Wurzelbrot", 0.3]]],
+    ["Blumenkohlsüppchen", [["Blumenkohl", 2], ["Sahne", 0.5], ["Braune Pilze", 0.2], ["Wurzelbrot", 0.3]]],
+    ["Kein-Schweinsbraten", [["Knollensellerie", 2], ["Zwiebeln", 0.2]]],
+    ["Spitzkohl-Basis", [["Spitzkohl", 2], ["Kartoffeln", 0.6]]],
+    ["Rahm-Geschnetzeltes-Basis", [["Hähnchenbrust", 0.8], ["Spätzle-Mehl", 0.5], ["Eier", 4], ["Sahne", 0.4], ["Braune Pilze", 0.3]]],
+    ["Wild-Bolognese", [["Pasta", 0.6], ["Wild-Hackfleisch", 0.6], ["Zwiebeln", 0.3], ["Parmesan", 0.15]]],
+    ["Wildfleischpflanzerl-Basis", [["Wild-Hackfleisch", 0.9], ["Eier", 2], ["Zwiebeln", 0.2]]],
+    ["Hirschragout-Basis", [["Hirschkalbskeule (TK)", 1.2], ["Zwiebeln", 0.3], ["Rotkohl", 0.2]]],
+    ["Bienenstich-Tiramisu-Basis", [["Löffelbiskuit", 1], ["Mascarpone", 0.5], ["Sahne", 0.3], ["Mandelkrokant", 0.2]]],
+    ["Strudel-Basis", [["Strudelteig", 1], ["Äpfel", 0.8], ["Sahne", 0.3], ["Puderzucker", 0.05]]],
+    ["Pfannkuchen-Basis", [["Spätzle-Mehl", 0.4], ["Eier", 6], ["Äpfel", 0.5], ["Puderzucker", 0.05]]],
+  ];
+  for (const [name, zutaten] of HAUPT) await rezept(name, 4, zutaten);
+
+  // 4) Karten-Gerichte mit ihren Komponenten verdrahten (nur, wenn noch leer).
+  const KOMPONENTEN: [string, [string, number][]][] = [
+    ["Hausgemachtes veganes Aufstrich-Trio", [["Aufstrich-Trio", 1], ["Brezn & Brot", 1]]],
+    ["Obazda", [["Obazda-Teller", 1], ["Brezn & Brot", 1]]],
+    ["Röstkartoffeln mit Kräuterdip", [["Röstkartoffeln-Basis", 1]]],
+    ["Gegrillte Wassermelone", [["Gegrillte Wassermelone", 1]]],
+    ["Ziegenkäse auf Bete-Tatar", [["Ziegenkäse auf Bete", 1]]],
+    ["Tatar von der geräucherten Forelle", [["Forellen-Tatar", 1]]],
+    ["Kleiner Beilagensalat", [["Beilagensalat", 1]]],
+    ["Hand-aufs-Herz-Salatteller", [["Beilagensalat", 2]]],
+    ["Hand-aufs-Herz-Salat mit Kräuter-Pilzen", [["Beilagensalat", 2], ["Kräuter-Pilze", 1]]],
+    ["Hand-aufs-Herz-Salat mit Breznknödel", [["Beilagensalat", 2], ["Breznknödel-Basis", 1]]],
+    ["Hand-aufs-Herz-Salat mit Ziegenkäse", [["Beilagensalat", 2], ["Salat mit Ziegenkäse", 1]]],
+    ["Hand-aufs-Herz-Salat mit Hähnchen", [["Beilagensalat", 2], ["Salat mit Hähnchen", 1]]],
+    ["Gurkenkaltschale", [["Gurkenkaltschale", 1]]],
+    ["Blumenkohlsüppchen", [["Blumenkohlsüppchen", 1]]],
+    ["Kässpätzle", [["Kässpätzle-Basis", 1], ["Schmelzzwiebeln", 1]]],
+    ["„Kein-Schweinsbraten“", [["Kein-Schweinsbraten", 1], ["Kartoffel-Pastinaken-Stampf", 1], ["Vegane Bratensoße", 1], ["Rotkohlsalat", 1]]],
+    ["Breznknödel", [["Breznknödel-Basis", 1], ["Pilz-Rahmsoße", 1]]],
+    ["Spitzkohl", [["Spitzkohl-Basis", 1], ["Bratkartoffeln", 1], ["Kräuter-Pilze", 1], ["Vegane Bratensoße", 1]]],
+    ["Rahm-Geschnetzeltes", [["Rahm-Geschnetzeltes-Basis", 1], ["Pilz-Rahmsoße", 1]]],
+    ["Pasta mit Wild-Bolognese", [["Wild-Bolognese", 1]]],
+    ["Wildfleischpflanzerl", [["Wildfleischpflanzerl-Basis", 1], ["Kartoffel-Pastinaken-Stampf", 1]]],
+    ["Hirschragout", [["Hirschragout-Basis", 1], ["Breznknödel-Basis", 1], ["Rotkohlsalat", 1]]],
+    ["Bienenstich-Tiramisu", [["Bienenstich-Tiramisu-Basis", 1]]],
+    ["Strudel mit Vanillesoße", [["Strudel-Basis", 1]]],
+    ["Pfannkuchen", [["Pfannkuchen-Basis", 1]]],
+  ];
+  let verdrahtet = 0;
+  for (const [gerichtName, komponenten] of KOMPONENTEN) {
+    const g = await eins<{ id: string }>(
+      "SELECT id FROM gerichte WHERE lower(name) = lower(?)", gerichtName,
+    );
+    if (!g) continue;
+    if (await eins("SELECT 1 AS x FROM gericht_rezepte WHERE gericht_id = ?", g.id)) continue;
+    for (const [rname, portionen] of komponenten) {
+      const rid = await rezeptId(rname);
+      if (rid) await lauf(
+        "INSERT INTO gericht_rezepte (id, gericht_id, rezept_id, portionen) VALUES (?, ?, ?, ?)",
+        randomUUID(), g.id, rid, portionen,
+      );
+    }
+    verdrahtet++;
+  }
+  await lauf("INSERT INTO einstellungen (k, v) VALUES ('karte_kueche_seed', '1') ON CONFLICT (k) DO NOTHING");
+  console.log(`🍽️  Karte↔Küche↔Inventar geseedet: ${verdrahtet} Gerichte mit Rezepten verdrahtet`);
+}
+
 // Beim Import initialisieren -> Server und postinstall bekommen eine fertige DB.
 await migrieren();
 await saeen();
 await schichtRegelnSaeen();
 await rezepteSaeen();
 await karteSaeen();
+await karteKuecheBackfill();
+await kartenKuecheSaeen();

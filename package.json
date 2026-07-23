@@ -5,6 +5,7 @@
   "scripts": {
     "postinstall": "bun run scripts/init-db.ts",
     "dev": "bun run --hot index.ts",
+    "icons": "bun run scripts/icons.ts",
     "start": "bun run index.ts"
   },
   "dependencies": {
