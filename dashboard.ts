@@ -212,6 +212,13 @@ ${baseCss}
     .sp-aside .sp-gruppe{width:100%;}
   }
 
+  /* ---- Website-Karte ---- */
+  .kt-pos{border-radius:10px; padding:2px 4px;}
+  .kt-pos.kt-aus{opacity:.45;}
+  .kt-pos.ueber-oben{box-shadow:0 -3px 0 0 var(--amber);}
+  .kt-pos.ueber-unten{box-shadow:0 3px 0 0 var(--amber);}
+  .kt-pos .edit-zeile{margin-bottom:4px;}
+
   /* ---- Meine Schichten ---- */
   .ms-aktiv{border-color:var(--wald-hell); box-shadow:0 0 0 3px rgba(108,127,104,.14);}
   .ms-aktiv .dur{color:var(--wald);}
@@ -331,6 +338,7 @@ ${baseCss}
   <div class="tab" data-v="meine-zeiten">Meine Zeiten</div>
   <div class="tab" data-v="inventur">Inventur</div>
   <div class="tab" data-v="rezepte">Rezepte</div>
+  <div class="tab" data-v="karte">Karte</div>
   <div class="tab" data-v="schichtplan">Schichtplan</div>
   <div class="tab" data-v="auswertung">Auswertung</div>
   <div class="tab" data-v="team">Team</div>
@@ -432,6 +440,25 @@ ${baseCss}
     <div class="miniform">
       <input class="rl" id="rolleNeu" placeholder="Neue Rolle (z. B. Spüler)" maxlength="40">
       <button id="btnRolleNeu">+ Anlegen</button>
+    </div>
+  </section>
+
+  <!-- ===== VIEW: WEBSITE-KARTE (Admin) ===== -->
+  <section class="view" id="v-karte">
+    <div class="sec-title">Speisekarte der Website</div>
+    <p class="hint">
+      Was hier steht, steht auf handaufsherz.restaurant/speisekarte – Änderungen sind sofort live.
+      Reihenfolge per ⠿ ziehen. Getränke-Gruppen können Preisspalten haben (z. B. „0,3 l|0,5 l“),
+      die Preise der Zeilen folgen mit | getrennt (z. B. „3,9|4,9“).
+    </p>
+    <div class="ranges" id="ktKapitel"></div>
+    <div id="ktListe"><div class="empty">lädt …</div></div>
+    <div class="card regel-karte">
+      <div class="edit-zeile">
+        <input id="ktNeuTitel" placeholder="Neue Gruppe (z. B. Unsere Vorspeisen)" style="flex:1; min-width:200px">
+        <input id="ktNeuSpalten" placeholder="Preisspalten, optional (0,3 l|0,5 l)" style="width:220px">
+        <button class="ok" id="btnKtGruppe" style="border:none; background:var(--wald); color:var(--sand-hell); border-radius:9px; padding:9px 16px; cursor:pointer; font-family:var(--sans);">+ Gruppe</button>
+      </div>
     </div>
   </section>
 
@@ -606,6 +633,7 @@ function aktiviere(v){
   if(v==="meine-zeiten") loadMz();
   if(v==="inventur") loadInventur();
   if(v==="rezepte") loadKueche();
+  if(v==="karte") loadKarte();
   if(v==="schichtplan") loadSp();
   if(v==="auswertung") loadReport();
   if(v==="team") loadTeam();
@@ -613,7 +641,7 @@ function aktiviere(v){
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>aktiviere(t.dataset.v)));
 
 const erlaubteTabs=()=> ME.admin
-  ? ["heute","reservierungen","schichtplan","meine-zeiten","inventur","rezepte","auswertung","team"]
+  ? ["heute","reservierungen","schichtplan","meine-zeiten","inventur","rezepte","karte","auswertung","team"]
   : ["meine-schichten","meine-zeiten","reservierungen","inventur","rezepte"];
 
 function starte(){
@@ -973,6 +1001,179 @@ $("btnMzNeu").addEventListener("click",async ()=>{
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   $("mzNeuStart").value=""; $("mzNeuEnde").value="";
   loadMz();
+});
+
+/* ===== VIEW: WEBSITE-KARTE (Admin pflegt, sofort live) ===== */
+let KT={kapitel:[],gruppen:[],positionen:[]}, ktKapitel=null, ktPosEdit=null, ktDrag=null;
+
+async function loadKarte(){
+  KT=await fetch("/api/karte").then(x=>x.json());
+  if(!ktKapitel) ktKapitel=KT.kapitel[0].id;
+  $("ktKapitel").innerHTML=KT.kapitel.map(k=>
+    '<div class="range'+(k.id===ktKapitel?" active":"")+'" data-ktk="'+k.id+'">'+esc(k.titel)+'</div>').join("");
+  renderKarte();
+}
+
+function renderKarte(){
+  const gruppen=KT.gruppen.filter(g=>g.kapitel===ktKapitel);
+  $("ktListe").innerHTML=gruppen.length?gruppen.map(g=>{
+    const posn=KT.positionen.filter(p=>p.gruppe_id===g.id);
+    return '<div class="card regel-karte" data-ktgid="'+g.id+'">'+
+      '<div class="edit-zeile">'+
+        '<span class="regel-griff" draggable="true" data-ktggriff="'+g.id+'" title="Gruppe sortieren">⠿</span>'+
+        '<input data-ktgtitel="'+g.id+'" value="'+esc(g.titel)+'" style="flex:1; min-width:160px; font-weight:600">'+
+        '<input data-ktgspalten="'+g.id+'" value="'+esc(g.spalten||"")+'" placeholder="Preisspalten (|)" style="width:150px">'+
+        '<input data-ktgfuss="'+g.id+'" value="'+esc(g.fussnote||"")+'" placeholder="Fußnote" style="flex:1; min-width:140px">'+
+        '<div class="res-akt"><button class="ok" data-ktgsave="'+g.id+'">Speichern</button>'+
+        '<button class="no" data-ktgdel="'+g.id+'">Löschen</button></div>'+
+      '</div>'+
+      posn.map(p=>ktPosZeile(p)).join("")+
+      '<div class="edit-zeile" style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line)">'+
+        '<input data-ktneun="'+g.id+'" placeholder="Neue Position …" style="flex:1; min-width:160px">'+
+        '<input data-ktneup="'+g.id+'" placeholder="Preis(e)" style="width:110px">'+
+        '<button data-ktposneu="'+g.id+'" style="border:1px solid var(--line); background:var(--card); border-radius:9px; padding:8px 12px; cursor:pointer; font-family:var(--sans); font-size:12px;">+ Position</button>'+
+      '</div>'+
+    '</div>';
+  }).join(""):'<div class="empty">Noch keine Gruppen in diesem Kapitel</div>';
+  ktDnD();
+}
+
+function ktPosZeile(p){
+  const offen=ktPosEdit===p.id;
+  return '<div class="kt-pos'+(p.aktiv?"":" kt-aus")+'" data-ktpid="'+p.id+'">'+
+    '<div class="edit-zeile" style="margin-bottom:'+(offen?'6px':'4px')+'">'+
+      '<span class="regel-griff" draggable="true" data-ktpgriff="'+p.id+'" title="Position sortieren">⠿</span>'+
+      '<input data-ktpname="'+p.id+'" value="'+esc(p.name)+'" style="flex:1; min-width:160px">'+
+      '<input data-ktppreise="'+p.id+'" value="'+esc(p.preise||"")+'" placeholder="Preis(e)" style="width:100px">'+
+      '<label style="font-size:11px; color:var(--grey); display:flex; align-items:center; gap:4px">'+
+        '<input type="checkbox" data-ktpaktiv="'+p.id+'"'+(p.aktiv?" checked":"")+'> aktiv</label>'+
+      '<div class="res-akt">'+
+        '<button class="ok" data-ktpsave="'+p.id+'">Speichern</button>'+
+        '<button data-ktpmehr="'+p.id+'">'+(offen?"Weniger":"Details")+'</button>'+
+        '<button class="no" data-ktpdel="'+p.id+'">×</button>'+
+      '</div>'+
+    '</div>'+
+    (offen?'<div class="edit-zeile" style="margin:0 0 10px 26px">'+
+      '<input data-ktptext="'+p.id+'" value="'+esc(p.text||"")+'" placeholder="Beschreibung" style="flex:1; min-width:220px">'+
+      '<input data-ktpoption="'+p.id+'" value="'+esc(p.option||"")+'" placeholder="Option (z. B. vegan, ohne Feta − 2,5 €)" style="flex:1; min-width:180px">'+
+      ["v","vg","gf"].map(t=>'<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktptag="'+p.id+'" value="'+t+'"'+((p.tags||"").split(",").includes(t)?" checked":"")+'> '+t.toUpperCase()+'</label>').join("")+
+      '<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktpstern="'+p.id+'"'+(p.stern?" checked":"")+'> * Wild</label>'+
+    '</div>':'')+
+  '</div>';
+}
+
+function ktPosLesen(p){
+  const id=p.id;
+  const val=(sel)=>{const el=document.querySelector('[data-'+sel+'="'+id+'"]'); return el?el.value.trim():null;};
+  const chk=(sel)=>{const el=document.querySelector('[data-'+sel+'="'+id+'"]'); return el?el.checked:false;};
+  const tags=[...document.querySelectorAll('[data-ktptag="'+id+'"]')].filter(c=>c.checked).map(c=>c.value).join(",");
+  return {
+    gruppe_id:p.gruppe_id,
+    name:val("ktpname"), preise:val("ktppreise"),
+    text:ktPosEdit===id?val("ktptext"):p.text,
+    option:ktPosEdit===id?val("ktpoption"):p.option,
+    tags:ktPosEdit===id?tags:(p.tags||""),
+    stern:ktPosEdit===id?(chk("ktpstern")?1:0):p.stern,
+    aktiv:chk("ktpaktiv")?1:0,
+  };
+}
+
+function ktDnD(){
+  const wire=(griffSel,zielAttr,reihenfolgeUrl,liste,filter)=>{
+    document.querySelectorAll(griffSel).forEach(griff=>{
+      griff.addEventListener("dragstart",e=>{
+        ktDrag={id:griff.dataset.ktggriff||griff.dataset.ktpgriff, art:zielAttr};
+        e.dataTransfer.setData("text/plain",ktDrag.id);
+      });
+      griff.addEventListener("dragend",()=>{ ktDrag=null;
+        document.querySelectorAll("[data-ktgid],[data-ktpid]").forEach(k=>k.classList.remove("ueber-oben","ueber-unten")); });
+    });
+    document.querySelectorAll("["+zielAttr+"]").forEach(ziel=>{
+      ziel.addEventListener("dragover",e=>{
+        if(!ktDrag||ktDrag.art!==zielAttr) return;
+        const zid=ziel.getAttribute(zielAttr);
+        if(zid===ktDrag.id) return;
+        e.preventDefault();
+        const oben=e.offsetY<ziel.offsetHeight/2;
+        ziel.classList.toggle("ueber-oben",oben); ziel.classList.toggle("ueber-unten",!oben);
+      });
+      ziel.addEventListener("dragleave",()=>ziel.classList.remove("ueber-oben","ueber-unten"));
+      ziel.addEventListener("drop",async e=>{
+        e.preventDefault();
+        const oben=ziel.classList.contains("ueber-oben");
+        ziel.classList.remove("ueber-oben","ueber-unten");
+        if(!ktDrag||ktDrag.art!==zielAttr) return;
+        const zid=ziel.getAttribute(zielAttr);
+        const teil=liste().filter(filter);
+        if(!teil.some(x=>x.id===ktDrag.id)) return; // nur innerhalb desselben Containers
+        const ids=teil.map(x=>x.id).filter(i=>i!==ktDrag.id);
+        const zi=ids.indexOf(zid);
+        ids.splice(oben?zi:zi+1,0,ktDrag.id);
+        await fetch(reihenfolgeUrl,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+        loadKarte();
+      });
+    });
+  };
+  wire("[data-ktggriff]","data-ktgid","/api/karte/gruppen-reihenfolge",
+    ()=>KT.gruppen,g=>g.kapitel===ktKapitel);
+  document.querySelectorAll("[data-ktgid]").forEach(gk=>{
+    const gid=gk.dataset.ktgid;
+    wire('[data-ktpgriff]',"data-ktpid","/api/karte/positionen-reihenfolge",
+      ()=>KT.positionen,p=>p.gruppe_id===gid);
+  });
+}
+
+document.getElementById("v-karte").addEventListener("click",async e=>{
+  const chip=e.target.closest("[data-ktk]");
+  if(chip){ ktKapitel=chip.dataset.ktk; ktPosEdit=null; return loadKarte(); }
+  const b=e.target.closest("button"); if(!b) return;
+  const d=b.dataset;
+  const api=async (url,method,body)=>{
+    const r=await fetch(url,{method,headers:{"Content-Type":"application/json"},
+      body:body?JSON.stringify(body):undefined});
+    if(!r.ok && r.status!==204){ alert(((await r.json()).fehler)||"Fehler"); return false; }
+    return true;
+  };
+  if(d.ktgsave){
+    const g=KT.gruppen.find(x=>x.id===d.ktgsave);
+    if(await api("/api/karte/gruppen/"+g.id,"PUT",{kapitel:g.kapitel,
+      titel:document.querySelector('[data-ktgtitel="'+g.id+'"]').value.trim(),
+      spalten:document.querySelector('[data-ktgspalten="'+g.id+'"]').value.trim(),
+      fussnote:document.querySelector('[data-ktgfuss="'+g.id+'"]').value.trim()})) loadKarte();
+    return;
+  }
+  if(d.ktgdel){
+    if(!confirm("Gruppe samt allen Positionen löschen?")) return;
+    if(await api("/api/karte/gruppen/"+d.ktgdel,"DELETE")) loadKarte();
+    return;
+  }
+  if(d.ktposneu){
+    const name=document.querySelector('[data-ktneun="'+d.ktposneu+'"]').value.trim();
+    const preise=document.querySelector('[data-ktneup="'+d.ktposneu+'"]').value.trim();
+    if(!name){ alert("Bitte einen Namen angeben."); return; }
+    if(await api("/api/karte/positionen","POST",{gruppe_id:d.ktposneu,name,preise})) loadKarte();
+    return;
+  }
+  if(d.ktpmehr){ ktPosEdit=ktPosEdit===d.ktpmehr?null:d.ktpmehr; return renderKarte(); }
+  if(d.ktpsave){
+    const p=KT.positionen.find(x=>x.id===d.ktpsave);
+    if(await api("/api/karte/positionen/"+p.id,"PUT",ktPosLesen(p))){ ktPosEdit=null; loadKarte(); }
+    return;
+  }
+  if(d.ktpdel){
+    if(!confirm("Position löschen?")) return;
+    if(await api("/api/karte/positionen/"+d.ktpdel,"DELETE")) loadKarte();
+    return;
+  }
+});
+$("btnKtGruppe").addEventListener("click",async ()=>{
+  const titel=$("ktNeuTitel").value.trim();
+  if(!titel){ alert("Bitte einen Gruppentitel angeben."); return; }
+  const r=await fetch("/api/karte/gruppen",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({kapitel:ktKapitel,titel,spalten:$("ktNeuSpalten").value.trim()})});
+  if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+  $("ktNeuTitel").value=""; $("ktNeuSpalten").value="";
+  loadKarte();
 });
 
 /* ===== VIEW: REZEPTE & GERICHTE (Team liest + bucht, Admin pflegt) ===== */

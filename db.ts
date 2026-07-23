@@ -250,6 +250,39 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       INSERT INTO rollen (name) VALUES ('Cleaning') ON CONFLICT (name) DO NOTHING;
     `,
   },
+  {
+    id: "009-karte",
+    sql: /* sql */ `
+      -- Die Speise- und Getränkekarte der Website, vom Admin pflegbar.
+      -- Gruppen hängen an festen Kapiteln (vorspeisen, bier, wein …, siehe KAPITEL_META).
+      CREATE TABLE karte_gruppen (
+        id         TEXT PRIMARY KEY,
+        kapitel    TEXT NOT NULL,
+        titel      TEXT NOT NULL,
+        -- Preisspalten für Getränke, mit | getrennt (z. B. '0,3 l|0,5 l'); leer = eine Preisspalte
+        spalten    TEXT,
+        fussnote   TEXT,
+        sortierung INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX ix_kg_kapitel ON karte_gruppen(kapitel, sortierung);
+
+      CREATE TABLE karte_positionen (
+        id         TEXT PRIMARY KEY,
+        gruppe_id  TEXT NOT NULL REFERENCES karte_gruppen(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        text       TEXT,
+        option     TEXT,
+        -- Kennzeichen als CSV: v, vg, gf
+        tags       TEXT,
+        stern      INTEGER NOT NULL DEFAULT 0,
+        -- Preise mit | getrennt, passend zu den Spalten der Gruppe (leere Zellen erlaubt)
+        preise     TEXT,
+        sortierung INTEGER NOT NULL DEFAULT 0,
+        aktiv      INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX ix_kp_gruppe ON karte_positionen(gruppe_id, sortierung);
+    `,
+  },
 ];
 
 async function migrieren() {
@@ -417,8 +450,42 @@ async function rezepteSaeen() {
   console.log("🌱 Rezepte & Gerichte befüllt (Kässpätzle, Breznknödel)");
 }
 
+async function karteSaeen() {
+  const k = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM karte_gruppen");
+  if (Number(k?.c ?? 0) > 0) return;
+  // Einmaliger Import der bisherigen statischen Karte (Stand Juli 2026).
+  const { SPEISEN, GETRAENKE } = await import("./site/karte-daten");
+  let gSort = 0;
+  for (const kapitel of [...SPEISEN, ...GETRAENKE]) {
+    for (const gruppe of kapitel.gruppen) {
+      const gid = randomUUID();
+      await lauf(
+        "INSERT INTO karte_gruppen (id, kapitel, titel, spalten, fussnote, sortierung) VALUES (?, ?, ?, ?, ?, ?)",
+        gid, kapitel.id, gruppe.titel, gruppe.spalten?.join("|") ?? null, gruppe.fussnote ?? null, ++gSort,
+      );
+      let pSort = 0;
+      for (const g of gruppe.gerichte) {
+        await lauf(
+          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+          randomUUID(), gid, g.name, g.text ?? null, g.option ?? null,
+          g.tags?.join(",") ?? null, g.stern ? 1 : 0, g.preis ?? null, ++pSort,
+        );
+      }
+      for (const z of gruppe.zeilen ?? []) {
+        await lauf(
+          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, NULL, NULL, 0, ?, ?, 1)",
+          randomUUID(), gid, z.name, z.text ?? null,
+          z.preise.map((p) => p ?? "").join("|"), ++pSort,
+        );
+      }
+    }
+  }
+  console.log("🌱 Speisekarte in die Datenbank importiert");
+}
+
 // Beim Import initialisieren -> Server und postinstall bekommen eine fertige DB.
 await migrieren();
 await saeen();
 await schichtRegelnSaeen();
 await rezepteSaeen();
+await karteSaeen();

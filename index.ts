@@ -4,7 +4,8 @@ import { sessionsFor, durationMs, clip, type Ev } from "./time";
 import { terminalPage } from "./terminal";
 import { dashboardPage } from "./dashboard";
 import { homePage } from "./site/home";
-import { karteePage } from "./site/karte";
+import { karteSeite, karteInvalidieren } from "./site/karte";
+import { KAPITEL_META } from "./site/karte-daten";
 import { reservierungPage } from "./site/reservierung";
 import {
   datenschutzPage,
@@ -43,6 +44,44 @@ const INV_BEREICHE = ["kueche", "bar", "keller"];
 /** Passt eine Person auf eine Schicht-Rolle? Admins dürfen überall einspringen. */
 const rollePasst = (m: Mitarbeiter, schichtRolle: string) =>
   !!m.admin || m.role.trim().toLowerCase() === schichtRolle.trim().toLowerCase();
+
+/** Feldprüfung einer Karten-Gruppe. */
+function karteGruppeFelder(b: Record<string, unknown> | null) {
+  if (!b) return { fehler: "Ungültige Anfrage" };
+  const kapitel = text(b.kapitel, 30);
+  const titel = text(b.titel, 120);
+  if (!KAPITEL_META.some((k) => k.id === kapitel)) return { fehler: "Unbekanntes Kapitel." };
+  if (!titel) return { fehler: "Bitte einen Gruppentitel angeben." };
+  return {
+    kapitel,
+    titel,
+    spalten: text(b.spalten, 60) || null,
+    fussnote: text(b.fussnote, 300) || null,
+  };
+}
+
+/** Feldprüfung einer Karten-Position. */
+async function kartePositionFelder(b: Record<string, unknown> | null) {
+  if (!b) return { fehler: "Ungültige Anfrage" } as const;
+  const gruppe_id = text(b.gruppe_id, 64);
+  const name = text(b.name, 160);
+  if (!name) return { fehler: "Bitte einen Namen angeben." } as const;
+  if (!(await eins("SELECT 1 AS x FROM karte_gruppen WHERE id = ?", gruppe_id))) {
+    return { fehler: "Gruppe nicht gefunden." } as const;
+  }
+  const tags = text(b.tags, 20)
+    .split(",").map((t) => t.trim()).filter((t) => ["v", "vg", "gf"].includes(t)).join(",");
+  return {
+    gruppe_id,
+    name,
+    text: text(b.text, 500) || null,
+    option: text(b.option, 200) || null,
+    tags: tags || null,
+    stern: b.stern ? 1 : 0,
+    preise: text(b.preise, 60) || null,
+    aktiv: b.aktiv === 0 || b.aktiv === false ? 0 : 1,
+  };
+}
 
 /** Rezept-Body normalisieren (Prüfung übernimmt rezepte.ts). */
 function rezeptBody(b: Record<string, unknown> | null): kueche.NeuesRezept {
@@ -321,7 +360,7 @@ const server = Bun.serve({
   routes: {
     // ---------------- Gästeseite ----------------
     "/": () => html(homePage),
-    "/speisekarte": () => html(karteePage),
+    "/speisekarte": async () => html(await karteSeite()),
     "/reservierung": () => html(reservierungPage),
     "/ueber-uns": () => html(ueberUnsPage),
     "/feiern": () => html(feiernPage),
@@ -975,6 +1014,115 @@ const server = Bun.serve({
       );
       return Response.json(rows);
     }),
+
+    // ---- Website-Karte: pflegen nur Admin (die Website liest direkt aus der DB) ----
+    "/api/karte": nurAdmin(async () => {
+      const gruppen = await alle("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
+      const positionen = await alle("SELECT * FROM karte_positionen ORDER BY sortierung, name");
+      return Response.json({ kapitel: KAPITEL_META, gruppen, positionen });
+    }),
+
+    "/api/karte/gruppen": {
+      POST: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const daten = karteGruppeFelder(b);
+        if ("fehler" in daten) return Response.json(daten, { status: 400 });
+        const max = await eins<{ m: number | null }>("SELECT MAX(sortierung) AS m FROM karte_gruppen");
+        const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
+        await lauf(
+          "INSERT INTO karte_gruppen (id, kapitel, titel, spalten, fussnote, sortierung) VALUES (?, ?, ?, ?, ?, ?)",
+          zeile.id, zeile.kapitel, zeile.titel, zeile.spalten, zeile.fussnote, zeile.sortierung,
+        );
+        karteInvalidieren();
+        return Response.json(zeile, { status: 201 });
+      }),
+    },
+    "/api/karte/gruppen/:id": {
+      PUT: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const daten = karteGruppeFelder(b);
+        if ("fehler" in daten) return Response.json(daten, { status: 400 });
+        const r = await lauf(
+          "UPDATE karte_gruppen SET kapitel = ?, titel = ?, spalten = ?, fussnote = ? WHERE id = ?",
+          daten.kapitel, daten.titel, daten.spalten, daten.fussnote, req.params.id,
+        );
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        karteInvalidieren();
+        return Response.json({ id: req.params.id, ...daten });
+      }),
+      DELETE: nurAdmin(async (req) => {
+        const r = await lauf("DELETE FROM karte_gruppen WHERE id = ?", req.params.id);
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        karteInvalidieren();
+        return new Response(null, { status: 204 });
+      }),
+    },
+
+    "/api/karte/positionen": {
+      POST: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const daten = await kartePositionFelder(b);
+        if ("fehler" in daten) return Response.json(daten, { status: 400 });
+        const max = await eins<{ m: number | null }>(
+          "SELECT MAX(sortierung) AS m FROM karte_positionen WHERE gruppe_id = ?", daten.gruppe_id,
+        );
+        const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
+        await lauf(
+          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          zeile.id, zeile.gruppe_id, zeile.name, zeile.text, zeile.option, zeile.tags,
+          zeile.stern, zeile.preise, zeile.sortierung, zeile.aktiv,
+        );
+        karteInvalidieren();
+        return Response.json(zeile, { status: 201 });
+      }),
+    },
+    "/api/karte/positionen/:id": {
+      PUT: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const daten = await kartePositionFelder(b);
+        if ("fehler" in daten) return Response.json(daten, { status: 400 });
+        const r = await lauf(
+          "UPDATE karte_positionen SET gruppe_id = ?, name = ?, text = ?, option = ?, tags = ?, stern = ?, preise = ?, aktiv = ? WHERE id = ?",
+          daten.gruppe_id, daten.name, daten.text, daten.option, daten.tags,
+          daten.stern, daten.preise, daten.aktiv, req.params.id,
+        );
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        karteInvalidieren();
+        return Response.json({ id: req.params.id, ...daten });
+      }),
+      DELETE: nurAdmin(async (req) => {
+        const r = await lauf("DELETE FROM karte_positionen WHERE id = ?", req.params.id);
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        karteInvalidieren();
+        return new Response(null, { status: 204 });
+      }),
+    },
+
+    // Reihenfolge der Positionen (innerhalb einer Gruppe) bzw. der Gruppen per Drag & Drop.
+    "/api/karte/positionen-reihenfolge": {
+      PUT: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
+        if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
+        for (let i = 0; i < ids.length; i++) {
+          await lauf("UPDATE karte_positionen SET sortierung = ? WHERE id = ?", i + 1, ids[i]);
+        }
+        karteInvalidieren();
+        return Response.json({ ok: true });
+      }),
+    },
+    "/api/karte/gruppen-reihenfolge": {
+      PUT: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
+        if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
+        for (let i = 0; i < ids.length; i++) {
+          await lauf("UPDATE karte_gruppen SET sortierung = ? WHERE id = ?", i + 1, ids[i]);
+        }
+        karteInvalidieren();
+        return Response.json({ ok: true });
+      }),
+    },
 
     // ---- Rezepte (Komponenten): lesen fürs Team, pflegen nur Admin ----
     "/api/rezepte": {

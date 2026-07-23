@@ -188,6 +188,7 @@ ${baseCss}
       <a class="tile werkzeug" href="/team#heute"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
       <a class="tile werkzeug" href="/team#schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
       <a class="tile werkzeug" href="/team#auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+      <a class="tile werkzeug" href="/team#karte"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
       <a class="tile werkzeug" href="/team#team"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
     </template>
     <div class="tiles" id="tilesWerkzeuge"></div>

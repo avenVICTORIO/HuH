@@ -1,15 +1,27 @@
 import { seite } from "./layout";
 import { huegelSvg } from "./art";
 import { HAUS } from "./info";
-import {
-  GETRAENKE,
-  KENNZEICHEN,
-  SONNTAG,
-  SPEISEN,
-  type Gericht,
-  type Gruppe,
-  type Kapitel,
-} from "./karte-daten";
+import { alle } from "../db";
+import { KAPITEL_META, KENNZEICHEN, SONNTAG, type Kennzeichen } from "./karte-daten";
+
+// Karteninhalte kommen aus der Datenbank (Admin pflegt sie im Team-Bereich).
+type DbGruppe = {
+  id: string;
+  kapitel: string;
+  titel: string;
+  spalten: string | null;
+  fussnote: string | null;
+};
+type DbPosition = {
+  id: string;
+  gruppe_id: string;
+  name: string;
+  text: string | null;
+  option: string | null;
+  tags: string | null;
+  stern: number;
+  preise: string | null;
+};
 
 const css = /* css */ `
   .karte-kopf{background:var(--tann); color:var(--sand-hell); padding:clamp(56px,8vw,96px) 0 0; text-align:center;}
@@ -113,77 +125,91 @@ const css = /* css */ `
   .kapitel.leer .speisen, .kapitel.leer .gruppe > h3, .kapitel.leer .gruppe .regel, .kapitel.leer .fussnote{display:none;}
 `;
 
-const preis = (p?: string) => (p ? `${p} €` : "");
+const esc = (s: string | null | undefined) =>
+  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
-const tagsHtml = (g: Gericht) =>
-  g.tags?.length
-    ? `<span class="tags">${g.tags
+const preis = (p?: string | null) => (p ? `${p} €` : "");
+
+const posTags = (p: DbPosition): Kennzeichen[] =>
+  (p.tags ?? "").split(",").map((t) => t.trim()).filter((t): t is Kennzeichen => t in KENNZEICHEN);
+
+const tagsHtml = (p: DbPosition) => {
+  const tags = posTags(p);
+  return tags.length
+    ? `<span class="tags">${tags
         .map((t) => `<span class="tag ${t}" title="${KENNZEICHEN[t].lang}">${KENNZEICHEN[t].kurz}</span>`)
         .join("")}</span>`
     : "";
+};
 
-const gerichtHtml = (g: Gericht) => /* html */ `
-<article class="gericht" data-tags="${(g.tags ?? []).join(" ")}">
+const gerichtHtml = (p: DbPosition) => /* html */ `
+<article class="gericht" data-tags="${posTags(p).join(" ")}">
   <div class="gericht-kopf">
-    <span class="name">${g.name}${tagsHtml(g)}</span>
+    <span class="name">${esc(p.name)}${tagsHtml(p)}</span>
     <span class="fuell"></span>
-    <span class="preis">${preis(g.preis)}</span>
+    <span class="preis">${preis(p.preise)}</span>
   </div>
-  ${g.text ? `<p class="beschr">${g.text}${g.stern ? " <span title='Wild aus eigener Jagd'>*</span>" : ""}</p>` : ""}
-  ${g.option ? `<p class="option">${g.option}</p>` : ""}
+  ${p.text ? `<p class="beschr">${esc(p.text)}${p.stern ? " <span title='Wild aus eigener Jagd'>*</span>" : ""}</p>` : ""}
+  ${p.option ? `<p class="option">${esc(p.option)}</p>` : ""}
 </article>`;
 
-const getraenkeHtml = (gr: Gruppe) => {
-  const spalten = gr.spalten ?? [""];
+const getraenkeHtml = (gr: DbGruppe, zeilen: DbPosition[]) => {
+  const spalten = gr.spalten ? gr.spalten.split("|") : [""];
   return /* html */ `
 <table class="getraenke">
   ${
     gr.spalten
-      ? `<thead><tr><th></th>${spalten.map((s) => `<th>${s}</th>`).join("")}</tr></thead>`
+      ? `<thead><tr><th></th>${spalten.map((s) => `<th>${esc(s)}</th>`).join("")}</tr></thead>`
       : ""
   }
   <tbody>
-    ${(gr.zeilen ?? [])
-      .map(
-        (z) => `<tr>
-      <td><span class="gname">${z.name}</span>${z.text ? `<span class="gtext">${z.text}</span>` : ""}</td>
+    ${zeilen
+      .map((z) => {
+        const preise = (z.preise ?? "").split("|");
+        return `<tr>
+      <td><span class="gname">${esc(z.name)}</span>${z.text ? `<span class="gtext">${esc(z.text)}</span>` : ""}</td>
       ${spalten
-        .map((_, i) => `<td class="preis">${z.preise[i] ? `${z.preise[i]} €` : ""}</td>`)
+        .map((_, i) => `<td class="preis">${preise[i] ? `${esc(preise[i])} €` : ""}</td>`)
         .join("")}
-    </tr>`,
-      )
+    </tr>`;
+      })
       .join("\n    ")}
   </tbody>
 </table>`;
 };
 
-const gruppeHtml = (gr: Gruppe, getraenk: boolean) => /* html */ `
+const gruppeHtml = (gr: DbGruppe, positionen: DbPosition[], getraenk: boolean) => /* html */ `
 <div class="gruppe">
-  <h3>${gr.titel}</h3>
+  <h3>${esc(gr.titel)}</h3>
   <div class="regel"><span></span></div>
   ${
     getraenk
-      ? getraenkeHtml(gr)
-      : `<div class="speisen">${gr.gerichte.map(gerichtHtml).join("")}</div>`
+      ? getraenkeHtml(gr, positionen)
+      : `<div class="speisen">${positionen.map(gerichtHtml).join("")}</div>`
   }
-  ${gr.fussnote ? `<p class="fussnote">${gr.fussnote}</p>` : ""}
+  ${gr.fussnote ? `<p class="fussnote">${esc(gr.fussnote)}</p>` : ""}
 </div>`;
 
-const kapitelHtml = (k: Kapitel, getraenk = false) => /* html */ `
-<section class="kapitel" id="${k.id}">
+const kapitelHtml = (
+  meta: (typeof KAPITEL_META)[number],
+  gruppen: DbGruppe[],
+  posVon: (g: DbGruppe) => DbPosition[],
+) => /* html */ `
+<section class="kapitel" id="${meta.id}">
   <div class="wrap">
     <div class="kapitel-kopf auf">
-      <h2>${k.titel}</h2>
-      ${k.unterzeile ? `<p>${k.unterzeile}</p>` : ""}
+      <h2>${meta.titel}</h2>
+      ${meta.unterzeile ? `<p>${meta.unterzeile}</p>` : ""}
     </div>
-    ${k.gruppen.map((gr) => gruppeHtml(gr, getraenk)).join("")}
+    ${gruppen.map((gr) => gruppeHtml(gr, posVon(gr), meta.getraenk)).join("")}
     <p class="keine-treffer">Zu dieser Auswahl haben wir hier nichts – schaut in ein anderes Kapitel.</p>
   </div>
 </section>`;
 
-const ALLE = [...SPEISEN, ...GETRAENKE];
-
-const inhalt = /* html */ `
+const inhaltAus = (
+  kapitel: { meta: (typeof KAPITEL_META)[number]; gruppen: DbGruppe[] }[],
+  posVon: (g: DbGruppe) => DbPosition[],
+) => /* html */ `
 <section class="karte-kopf">
   <div class="wrap schmal">
     <p class="eyebrow" style="color:var(--sand)">Speisen & Getränke · Stand Juli 2026</p>
@@ -198,7 +224,7 @@ const inhalt = /* html */ `
 
 <div class="leiste">
   <div class="leiste-innen">
-    ${ALLE.map((k) => `<a class="sprung" href="#${k.id}">${k.titel}</a>`).join("\n    ")}
+    ${kapitel.map((k) => `<a class="sprung" href="#${k.meta.id}">${k.meta.titel}</a>`).join("\n    ")}
     <span class="teiler"></span>
     <button class="filter" data-filter="v" aria-pressed="false">Vegetarisch</button>
     <button class="filter" data-filter="vg" aria-pressed="false">Vegan</button>
@@ -206,7 +232,7 @@ const inhalt = /* html */ `
   </div>
 </div>
 
-${SPEISEN.map((k) => kapitelHtml(k)).join("")}
+${kapitel.filter((k) => !k.meta.getraenk).map((k) => kapitelHtml(k.meta, k.gruppen, posVon)).join("")}
 
 <section class="luft-klein">
   <div class="wrap schmal">
@@ -273,7 +299,7 @@ ${SPEISEN.map((k) => kapitelHtml(k)).join("")}
   </div>
 </section>
 
-${GETRAENKE.map((k) => kapitelHtml(k, true)).join("")}
+${kapitel.filter((k) => k.meta.getraenk).map((k) => kapitelHtml(k.meta, k.gruppen, posVon)).join("")}
 
 <section class="luft">
   <div class="wrap schmal">
@@ -326,12 +352,34 @@ const js = /* js */ `
   });
 `;
 
-export const karteePage = seite({
-  titel: `Speisekarte – ${HAUS.name} ${HAUS.stadt}`,
-  beschreibung:
-    "Die aktuelle Speise- und Getränkekarte vom Hand aufs Herz in München: Vorspeisen, Salate, Herzhaftes mit Wild aus eigener Jagd, vegane Gerichte, Weine und Bar.",
-  aktiv: "/speisekarte",
-  css,
-  js,
-  inhalt,
-});
+// Die fertige Seite wird gecacht und bei jeder Karten-Änderung neu gebaut.
+let cacheHtml: string | null = null;
+export function karteInvalidieren() {
+  cacheHtml = null;
+}
+
+/** Speisekarte aus der Datenbank rendern (Admin pflegt sie unter /team#karte). */
+export async function karteSeite(): Promise<string> {
+  if (cacheHtml) return cacheHtml;
+
+  const gruppen = await alle<DbGruppe>("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
+  const positionen = await alle<DbPosition>(
+    "SELECT * FROM karte_positionen WHERE aktiv = 1 ORDER BY sortierung, name",
+  );
+  const posVon = (g: DbGruppe) => positionen.filter((p) => p.gruppe_id === g.id);
+  const kapitel = KAPITEL_META
+    .map((meta) => ({ meta, gruppen: gruppen.filter((g) => g.kapitel === meta.id) }))
+    // Kapitel ohne Inhalt tauchen weder in der Sprungleiste noch auf der Seite auf.
+    .filter((k) => k.gruppen.some((g) => posVon(g).length));
+
+  cacheHtml = seite({
+    titel: `Speisekarte – ${HAUS.name} ${HAUS.stadt}`,
+    beschreibung:
+      "Die aktuelle Speise- und Getränkekarte vom Hand aufs Herz in München: Vorspeisen, Salate, Herzhaftes mit Wild aus eigener Jagd, vegane Gerichte, Weine und Bar.",
+    aktiv: "/speisekarte",
+    css,
+    js,
+    inhalt: inhaltAus(kapitel, posVon),
+  });
+  return cacheHtml;
+}

@@ -34,6 +34,22 @@ export type Kapitel = {
   gruppen: Gruppe[];
 };
 
+/**
+ * Feste Kapitel-Struktur der Karte. Die Inhalte (Gruppen + Positionen) liegen in
+ * der Datenbank und werden vom Admin im Team-Bereich gepflegt; SPEISEN/GETRAENKE
+ * unten dienen nur noch als einmaliger Seed-Import.
+ */
+export const KAPITEL_META: { id: string; titel: string; unterzeile?: string; getraenk: boolean }[] = [
+  { id: "vorspeisen", titel: "Vorspeisen", unterzeile: "Zum Ankommen, Teilen und Warmwerden.", getraenk: false },
+  { id: "salate", titel: "Salate & Suppen", unterzeile: "Leicht, saisonal, aus der Nachbarschaft.", getraenk: false },
+  { id: "herzhaftes", titel: "Herzhaftes", unterzeile: "Wild aus eigener Jagd und vollwertige vegane Küche – Seite an Seite.", getraenk: false },
+  { id: "suesses", titel: "Süße Versuchung", unterzeile: "Der letzte Gang, für den man immer noch Platz hat.", getraenk: false },
+  { id: "bier", titel: "Bier & Wasser", unterzeile: "Frisch gezapft aus München.", getraenk: true },
+  { id: "alkoholfrei", titel: "Alkoholfrei", unterzeile: "Unsere eigenen Limonaden – hausgemacht, nicht zu süß.", getraenk: true },
+  { id: "wein", titel: "Wein & Prosecco", unterzeile: "Entstanden in Zusammenarbeit mit F.X. Muschelkalk / Linke Weinhandel aus der Dreimühlenstraße.", getraenk: true },
+  { id: "bar", titel: "Bar", unterzeile: "Spritz-Ecke, Gin, Longdrinks und ein Schnapserl zum Schluss.", getraenk: true },
+];
+
 export const KENNZEICHEN: Record<Kennzeichen, { kurz: string; lang: string }> = {
   v: { kurz: "V", lang: "vegetarisch" },
   vg: { kurz: "VG", lang: "vegan" },
