@@ -71,6 +71,10 @@ async function kartePositionFelder(b: Record<string, unknown> | null) {
   }
   const tags = text(b.tags, 20)
     .split(",").map((t) => t.trim()).filter((t) => ["v", "vg", "gf"].includes(t)).join(",");
+  const gericht_id = text(b.gericht_id, 64) || null;
+  if (gericht_id && !(await eins("SELECT 1 AS x FROM gerichte WHERE id = ?", gericht_id))) {
+    return { fehler: "Verknüpftes Gericht nicht gefunden." } as const;
+  }
   return {
     gruppe_id,
     name,
@@ -80,7 +84,14 @@ async function kartePositionFelder(b: Record<string, unknown> | null) {
     stern: b.stern ? 1 : 0,
     preise: text(b.preise, 60) || null,
     aktiv: b.aktiv === 0 || b.aktiv === false ? 0 : 1,
+    gericht_id,
   };
+}
+
+/** Karte -> Küche: verknüpftes Gericht übernimmt Name + Preis der Kartenposition. */
+async function gerichtAusKarteSyncen(p: { gericht_id: string | null; name: string; preise: string | null }) {
+  if (!p.gericht_id) return;
+  await lauf("UPDATE gerichte SET name = ?, preis = ? WHERE id = ?", p.name, p.preise, p.gericht_id);
 }
 
 /** Rezept-Body normalisieren (Prüfung übernimmt rezepte.ts). */
@@ -585,6 +596,7 @@ const server = Bun.serve({
           menge, Date.now(), req.params.id,
         );
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        karteInvalidieren(); // Bestand beeinflusst „heute aus“ auf der Website
         return Response.json({ id: req.params.id, menge });
       }),
       // Nur Admin: Artikel umbenennen, Bereich/Einheit/Soll/Notiz ändern.
@@ -1019,7 +1031,8 @@ const server = Bun.serve({
     "/api/karte": nurAdmin(async () => {
       const gruppen = await alle("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
       const positionen = await alle("SELECT * FROM karte_positionen ORDER BY sortierung, name");
-      return Response.json({ kapitel: KAPITEL_META, gruppen, positionen });
+      const gerichte = await alle("SELECT id, name FROM gerichte ORDER BY name");
+      return Response.json({ kapitel: KAPITEL_META, gruppen, positionen, gerichte });
     }),
 
     "/api/karte/gruppen": {
@@ -1068,10 +1081,11 @@ const server = Bun.serve({
         );
         const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
         await lauf(
-          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv, gericht_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           zeile.id, zeile.gruppe_id, zeile.name, zeile.text, zeile.option, zeile.tags,
-          zeile.stern, zeile.preise, zeile.sortierung, zeile.aktiv,
+          zeile.stern, zeile.preise, zeile.sortierung, zeile.aktiv, zeile.gericht_id,
         );
+        await gerichtAusKarteSyncen(zeile);
         karteInvalidieren();
         return Response.json(zeile, { status: 201 });
       }),
@@ -1082,11 +1096,12 @@ const server = Bun.serve({
         const daten = await kartePositionFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
         const r = await lauf(
-          "UPDATE karte_positionen SET gruppe_id = ?, name = ?, text = ?, option = ?, tags = ?, stern = ?, preise = ?, aktiv = ? WHERE id = ?",
+          "UPDATE karte_positionen SET gruppe_id = ?, name = ?, text = ?, option = ?, tags = ?, stern = ?, preise = ?, aktiv = ?, gericht_id = ? WHERE id = ?",
           daten.gruppe_id, daten.name, daten.text, daten.option, daten.tags,
-          daten.stern, daten.preise, daten.aktiv, req.params.id,
+          daten.stern, daten.preise, daten.aktiv, daten.gericht_id, req.params.id,
         );
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        await gerichtAusKarteSyncen(daten);
         karteInvalidieren();
         return Response.json({ id: req.params.id, ...daten });
       }),
@@ -1161,14 +1176,22 @@ const server = Bun.serve({
     "/api/gerichte/:id": {
       PUT: nurAdmin(async (req) => {
         const b = await req.json().catch(() => null);
-        const erg = await kueche.gerichtSpeichern(gerichtBody(b), req.params.id);
+        const daten = gerichtBody(b);
+        const erg = await kueche.gerichtSpeichern(daten, req.params.id);
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
+        // Küche -> Karte: verknüpfte Kartenpositionen übernehmen Name + Preis.
+        await lauf(
+          "UPDATE karte_positionen SET name = ?, preise = ? WHERE gericht_id = ?",
+          daten.name, daten.preis, req.params.id,
+        );
+        karteInvalidieren();
         return Response.json({ id: erg.wert });
       }),
       DELETE: nurAdmin(async (req) => {
         if (!(await kueche.gerichtLoeschen(req.params.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
+        karteInvalidieren(); // Verknüpfungen lösen sich (ON DELETE SET NULL)
         return new Response(null, { status: 204 });
       }),
     },
@@ -1179,6 +1202,7 @@ const server = Bun.serve({
         const b = await req.json().catch(() => ({}));
         const erg = await kueche.kochen(req.params.id, Number(b?.portionen ?? 1));
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
+        karteInvalidieren(); // Verfügbarkeit („heute aus“) hängt am Bestand
         return Response.json({ ok: true, abgebucht: erg.wert });
       }),
     },

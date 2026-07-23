@@ -116,6 +116,8 @@ export type Gericht = {
   verfuegbar: number | null;
   /** Die Zutat, die zuerst ausgeht. */
   engpass: string | null;
+  /** Ist das Gericht mit einer Position der Website-Karte verknüpft? */
+  aufKarte: boolean;
 };
 
 /** Zutatenbedarf pro Portion eines Gerichts, aggregiert über alle Komponenten. */
@@ -153,6 +155,11 @@ export async function gerichteLaden(): Promise<Gericht[]> {
     `SELECT gr.id, gr.gericht_id, gr.rezept_id, gr.portionen, r.name AS rezept
        FROM gericht_rezepte gr JOIN rezepte r ON r.id = gr.rezept_id`,
   );
+  const verlinkt = new Set(
+    (await alle<{ gericht_id: string }>(
+      "SELECT DISTINCT gericht_id FROM karte_positionen WHERE gericht_id IS NOT NULL",
+    )).map((r) => r.gericht_id),
+  );
   const ergebnis: Gericht[] = [];
   for (const k of koepfe) {
     const bedarf = await bedarfFuer(k.id);
@@ -171,6 +178,7 @@ export async function gerichteLaden(): Promise<Gericht[]> {
       bedarf,
       verfuegbar,
       engpass,
+      aufKarte: verlinkt.has(k.id),
     });
   }
   return ergebnis;
