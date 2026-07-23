@@ -20,13 +20,15 @@ export type Rezept = {
   name: string;
   ergibt: number; // Portionen pro Ansatz
   notiz: string | null;
+  /** Schritt-für-Schritt-Anleitung, eine Zeile = ein Schritt. */
+  zubereitung: string | null;
   zutaten: RezeptZutat[];
 };
 
 // ------------------------------------------------------------------- Rezepte
 
 export async function rezepteLaden(): Promise<Rezept[]> {
-  const koepfe = await alle<{ id: string; name: string; ergibt: number; notiz: string | null }>(
+  const koepfe = await alle<{ id: string; name: string; ergibt: number; notiz: string | null; zubereitung: string | null }>(
     "SELECT * FROM rezepte ORDER BY name",
   );
   const zutaten = await alle<RezeptZutat & { rezept_id: string }>(
@@ -44,6 +46,7 @@ export type NeuesRezept = {
   name: string;
   ergibt: number;
   notiz: string | null;
+  zubereitung: string | null;
   zutaten: { inventar_id: string; menge: number }[];
 };
 
@@ -71,13 +74,17 @@ export async function rezeptSpeichern(r: NeuesRezept, id?: string): Promise<Erge
 
   if (id) {
     const res = await lauf(
-      "UPDATE rezepte SET name = ?, ergibt = ?, notiz = ? WHERE id = ?", r.name, r.ergibt, r.notiz, id,
+      "UPDATE rezepte SET name = ?, ergibt = ?, notiz = ?, zubereitung = ? WHERE id = ?",
+      r.name, r.ergibt, r.notiz, r.zubereitung, id,
     );
     if (res.changes === 0) return { ok: false, fehler: "Rezept nicht gefunden." };
     await lauf("DELETE FROM rezept_zutaten WHERE rezept_id = ?", id);
   } else {
     id = randomUUID();
-    await lauf("INSERT INTO rezepte (id, name, ergibt, notiz) VALUES (?, ?, ?, ?)", id, r.name, r.ergibt, r.notiz);
+    await lauf(
+      "INSERT INTO rezepte (id, name, ergibt, notiz, zubereitung) VALUES (?, ?, ?, ?, ?)",
+      id, r.name, r.ergibt, r.notiz, r.zubereitung,
+    );
   }
   for (const z of r.zutaten) {
     await lauf(
