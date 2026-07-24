@@ -55,7 +55,7 @@ export async function wer(req: Request): Promise<Mitarbeiter | null> {
   const id = tokenPruefen(m[1]);
   if (!id) return null;
   return eins<Mitarbeiter>(
-    "SELECT id, name, role, pin, admin FROM mitarbeiter WHERE id = ?", id,
+    "SELECT id, name, role, pin, admin, ma_code, personalnr, soll_std FROM mitarbeiter WHERE id = ?", id,
   );
 }
 

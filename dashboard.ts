@@ -116,6 +116,9 @@ ${baseCss}
   .iconbtn.edit{color:var(--wald);} .iconbtn.del{color:var(--rot);}
   .rowinput{padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px;}
   .rowinput.nm{flex:1; min-width:100px;} .rowinput.rl{width:130px;} .rowinput.pn{width:70px; letter-spacing:2px;}
+  .rowinput.code{width:100px;} .rowinput.pnr{width:110px; font-variant-numeric:tabular-nums;} .rowinput.soll{width:74px; font-variant-numeric:tabular-nums;}
+  .miniform input.code{width:110px;} .miniform input.pnr{width:120px; font-variant-numeric:tabular-nums;} .miniform input.soll{width:84px; font-variant-numeric:tabular-nums;}
+  .soll{font-variant-numeric:tabular-nums; color:var(--wald); font-size:13px; white-space:nowrap;}
   .hint{font-size:13px; color:var(--grey); margin:2px 0 10px; line-height:1.5;}
 
   /* ---- PIN-Gate ---- */
@@ -433,12 +436,15 @@ ${baseCss}
   <!-- ===== VIEW 3: TEAM ===== -->
   <section class="view" id="v-team">
     <div class="sec-title">Team verwalten</div>
-    <p class="hint">Name, Rolle und 4-stelligen PIN vergeben. Jeder PIN darf nur einmal existieren – damit stempelt der Mitarbeiter am Terminal ein und aus.</p>
+    <p class="hint">Name, Rolle und 4-stelligen PIN vergeben – damit stempelt der Mitarbeiter am Terminal ein und aus. MA-Code, Personal-Nr. (Gastromatic) und Soll-Wochenstunden stammen aus dem Stammblatt und sind optional. <b>Soll leer = Abruf</b>; 6 h sind ein Modellwert aus dem Personalkostenmodell, kein vertragliches Soll.</p>
     <div id="teamList"><div class="empty">lädt …</div></div>
     <div class="miniform">
       <input class="nm" id="newName" placeholder="Name (z. B. Anna)" maxlength="24">
       <select class="rl" id="newRole" style="padding:11px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; background:var(--card); font-family:var(--sans);"></select>
       <input class="pn" id="newPin" placeholder="PIN" inputmode="numeric" maxlength="4">
+      <input class="code" id="newCode" placeholder="MA-Code" maxlength="10">
+      <input class="pnr" id="newPnr" placeholder="Personal-Nr." maxlength="12" inputmode="numeric">
+      <input class="soll" id="newSoll" placeholder="Soll h" inputmode="decimal" maxlength="5">
       <button id="btnAdd">+ Hinzufügen</button>
     </div>
 
@@ -1768,10 +1774,16 @@ async function loadTeam(){
         '<input class="rowinput nm" id="eName" value="'+esc(m.name)+'">'+
         '<select class="rowinput rl" id="eRole">'+optionen(m.role)+'</select>'+
         '<input class="rowinput pn" id="ePin" value="'+esc(m.pin)+'" maxlength="4" inputmode="numeric">'+
+        '<input class="rowinput code" id="eCode" value="'+esc(m.ma_code||"")+'" placeholder="MA-Code" maxlength="10">'+
+        '<input class="rowinput pnr" id="ePnr" value="'+esc(m.personalnr||"")+'" placeholder="Personal-Nr." maxlength="12" inputmode="numeric">'+
+        '<input class="rowinput soll" id="eSoll" value="'+(m.soll_std==null?"":esc(String(m.soll_std)))+'" placeholder="Soll h" maxlength="5" inputmode="decimal">'+
         '<button class="iconbtn edit" data-save="'+m.id+'">Speichern</button>'+
         '<button class="iconbtn del" data-cancel>Abbrechen</button></div>';
     }
-    return '<div class="card row"><div class="nm">'+esc(m.name)+'<small>'+esc(m.role)+'</small></div>'+
+    const meta=[esc(m.role)]; if(m.ma_code) meta.push(esc(m.ma_code)); if(m.personalnr) meta.push(esc(m.personalnr));
+    const soll=m.soll_std==null?"Abruf":esc(String(m.soll_std))+" h/Wo";
+    return '<div class="card row"><div class="nm">'+esc(m.name)+'<small>'+meta.join(" · ")+'</small></div>'+
+      '<span class="soll">'+soll+'</span>'+
       (m.admin?'<span class="tag in">Admin</span>':'')+
       '<span class="pin">PIN '+esc(m.pin)+'</span>'+
       '<button class="iconbtn edit" data-edit="'+m.id+'">Bearbeiten</button>'+
@@ -1784,7 +1796,8 @@ $("teamList").addEventListener("click",async e=>{
   if(t.dataset.cancel!==undefined){ editId=null; return loadTeam(); }
   if(t.dataset.del){ if(confirm("Mitarbeiter wirklich löschen? Auch die Zeiten werden entfernt.")){ await fetch("/api/mitarbeiter/"+t.dataset.del,{method:"DELETE"}); loadTeam(); } return; }
   if(t.dataset.save){
-    const body={name:$("eName").value.trim(),role:$("eRole").value.trim(),pin:$("ePin").value.trim()};
+    const body={name:$("eName").value.trim(),role:$("eRole").value.trim(),pin:$("ePin").value.trim(),
+      ma_code:$("eCode").value.trim(),personalnr:$("ePnr").value.trim(),soll_std:$("eSoll").value.trim()};
     const r=await fetch("/api/mitarbeiter/"+t.dataset.save,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
     editId=null; loadTeam();
@@ -1809,11 +1822,12 @@ $("btnRolleNeu").addEventListener("click",async ()=>{
 });
 
 $("btnAdd").addEventListener("click",async ()=>{
-  const body={name:$("newName").value.trim(),role:$("newRole").value.trim(),pin:$("newPin").value.trim()};
+  const body={name:$("newName").value.trim(),role:$("newRole").value.trim(),pin:$("newPin").value.trim(),
+    ma_code:$("newCode").value.trim(),personalnr:$("newPnr").value.trim(),soll_std:$("newSoll").value.trim()};
   if(!body.name||!body.role){ alert("Name und Rolle sind Pflicht"); return; }
   const r=await fetch("/api/mitarbeiter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
-  $("newName").value=""; $("newRole").value=""; $("newPin").value=""; loadTeam();
+  $("newName").value=""; $("newRole").value=""; $("newPin").value=""; $("newCode").value=""; $("newPnr").value=""; $("newSoll").value=""; loadTeam();
 });
 
 boot();

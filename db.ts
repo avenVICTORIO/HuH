@@ -12,6 +12,12 @@ export type Mitarbeiter = {
   pin: string;
   /** 1 = Admin (sieht Team, alle Zeiten); 0 = Mitarbeiter (nur eigene Zeiten + Reservierungen). */
   admin: number;
+  /** Personalstammblatt: MA-Code (z. B. "MA022"); null = kein Lohn/nicht gelistet. */
+  ma_code: string | null;
+  /** Gastromatic-Mitarbeiter-Nr. (z. B. "250022"); null = nicht vergeben. */
+  personalnr: string | null;
+  /** Soll-Wochenstunden; null = Abruf (keine feste Wochenstunden). */
+  soll_std: number | null;
 };
 
 type Zeile = Record<string, unknown>;
@@ -299,6 +305,18 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       ALTER TABLE rezepte ADD COLUMN zubereitung TEXT;
     `,
   },
+  {
+    // Personalstammblatt-Felder. Alle nullable: Inhaber ohne Lohn (kein MA-Code),
+    // Aushilfe-Slots ohne Gastromatic-Nr., soll_std NULL = Abruf.
+    id: "012-stammblatt-felder",
+    sql: /* sql */ `
+      ALTER TABLE mitarbeiter ADD COLUMN ma_code    TEXT;
+      ALTER TABLE mitarbeiter ADD COLUMN personalnr TEXT;
+      ALTER TABLE mitarbeiter ADD COLUMN soll_std   DOUBLE PRECISION CHECK (soll_std >= 0);
+      CREATE UNIQUE INDEX ux_ma_code    ON mitarbeiter(ma_code);
+      CREATE UNIQUE INDEX ux_personalnr ON mitarbeiter(personalnr);
+    `,
+  },
 ];
 
 async function migrieren() {
@@ -334,11 +352,10 @@ async function saeen() {
   const m = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM mitarbeiter");
   if (Number(m?.c ?? 0) === 0) {
     await lauf(
-      "INSERT INTO mitarbeiter (id, name, role, pin, admin) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)",
-      randomUUID(), "Victorio", "Inhaber", "1001", 1,
-      randomUUID(), "Alice", "Service", "1002", 0,
+      "INSERT INTO mitarbeiter (id, name, role, pin, admin) VALUES (?, ?, ?, ?, ?)",
+      randomUUID(), "Victorio", "Inhaber", "0009", 1,
     );
-    console.log("🌱 Team befüllt: Victorio (PIN 1001, Admin), Alice (PIN 1002)");
+    console.log("🌱 Team befüllt: Victorio (PIN 0009, Admin)");
   }
 
   // Inventur-Beispieldaten: bei (fast) leerer Tabelle einmalig auffüllen.

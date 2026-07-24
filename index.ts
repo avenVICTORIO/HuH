@@ -298,11 +298,20 @@ function teamFelder(b: Record<string, unknown>) {
   };
 }
 
+/** Spalten des Mitarbeiter-Datensatzes – an einer Stelle, damit alle Queries synchron bleiben. */
+const MA_COLS = "id, name, role, pin, admin, ma_code, personalnr, soll_std";
+
 const listAll = () =>
-  alle<Mitarbeiter>("SELECT id, name, role, pin, admin FROM mitarbeiter ORDER BY name");
+  alle<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter ORDER BY name`);
 
 const byPin = (pin: string) =>
-  eins<Mitarbeiter>("SELECT id, name, role, pin, admin FROM mitarbeiter WHERE pin = ?", pin);
+  eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE pin = ?`, pin);
+
+const byMaCode = (code: string) =>
+  eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE ma_code = ?`, code);
+
+const byPersonalnr = (nr: string) =>
+  eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE personalnr = ?`, nr);
 
 const lastEvent = (id: string) =>
   eins<{ type: "in" | "out"; ts: number }>(
@@ -311,6 +320,20 @@ const lastEvent = (id: string) =>
 
 const isValidPin = (p: unknown): p is string =>
   typeof p === "string" && /^\d{4}$/.test(p);
+
+/** Leere Eingabe -> null; sonst getrimmter String. */
+const leerZuNull = (v: unknown): string | null => {
+  const s = (v ?? "").toString().trim();
+  return s === "" ? null : s;
+};
+
+/** Soll-Wochenstunden: leer -> null (Abruf); sonst Zahl >= 0. `false` = ungültig. */
+const parseSoll = (v: unknown): number | null | false => {
+  const s = (v ?? "").toString().trim().replace(",", ".");
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : false;
+};
 
 /** Stempeln ist nur ±2 h um die geplante Schicht erlaubt. */
 const STEMPEL_PUFFER_MS = 2 * 60 * 60 * 1000;
@@ -759,7 +782,7 @@ const server = Bun.serve({
         const mid = b?.mitarbeiter_id ?? null;
         if (mid !== null) {
           const m = await eins<Mitarbeiter>(
-            "SELECT id, name, role, pin, admin FROM mitarbeiter WHERE id = ?", mid,
+            `SELECT ${MA_COLS} FROM mitarbeiter WHERE id = ?`, mid,
           );
           if (!m) return Response.json({ fehler: "Mitarbeiter unbekannt" }, { status: 400 });
           const slot = await eins<{ datum: string; rolle: string; von: string; bis: string; mitarbeiter_id: string | null }>(
@@ -1283,7 +1306,7 @@ const server = Bun.serve({
     "/api/mitarbeiter": {
       GET: nurAdmin(async () => Response.json(await listAll())),
       POST: nurAdmin(async (req) => {
-        const { name, role, pin: rawPin } = await req.json();
+        const { name, role, pin: rawPin, ma_code, personalnr, soll_std } = await req.json();
         if (!name?.trim() || !role?.trim()) {
           return Response.json({ error: "Name und Rolle sind Pflicht" }, { status: 400 });
         }
@@ -1296,10 +1319,21 @@ const server = Bun.serve({
           return Response.json({ error: "PIN muss aus 4 Ziffern bestehen" }, { status: 400 });
         }
         if (await byPin(pin)) return Response.json({ error: "PIN bereits vergeben" }, { status: 409 });
-        const row: Mitarbeiter = { id: randomUUID(), name: name.trim(), role: role.trim(), pin, admin: 0 };
+
+        const code = leerZuNull(ma_code);
+        const pnr = leerZuNull(personalnr);
+        const soll = parseSoll(soll_std);
+        if (soll === false) return Response.json({ error: "Soll-Wochenstunden muss eine Zahl ≥ 0 sein" }, { status: 400 });
+        if (code && (await byMaCode(code))) return Response.json({ error: "MA-Code bereits vergeben" }, { status: 409 });
+        if (pnr && (await byPersonalnr(pnr))) return Response.json({ error: "Personal-Nr. bereits vergeben" }, { status: 409 });
+
+        const row: Mitarbeiter = {
+          id: randomUUID(), name: name.trim(), role: role.trim(), pin, admin: 0,
+          ma_code: code, personalnr: pnr, soll_std: soll,
+        };
         await lauf(
-          "INSERT INTO mitarbeiter (id, name, role, pin, admin) VALUES (?, ?, ?, ?, 0)",
-          row.id, row.name, row.role, row.pin,
+          "INSERT INTO mitarbeiter (id, name, role, pin, admin, ma_code, personalnr, soll_std) VALUES (?, ?, ?, ?, 0, ?, ?, ?)",
+          row.id, row.name, row.role, row.pin, row.ma_code, row.personalnr, row.soll_std,
         );
         return Response.json(row, { status: 201 });
       }),
@@ -1307,7 +1341,7 @@ const server = Bun.serve({
 
     "/api/mitarbeiter/:id": {
       PUT: nurAdmin(async (req) => {
-        const { name, role, pin } = await req.json();
+        const { name, role, pin, ma_code, personalnr, soll_std } = await req.json();
         const { id } = req.params;
         if (!name?.trim() || !role?.trim()) {
           return Response.json({ error: "Name und Rolle sind Pflicht" }, { status: 400 });
@@ -1323,12 +1357,21 @@ const server = Bun.serve({
         if (clash && clash.id !== id) {
           return Response.json({ error: "PIN bereits vergeben" }, { status: 409 });
         }
+        const code = leerZuNull(ma_code);
+        const pnr = leerZuNull(personalnr);
+        const soll = parseSoll(soll_std);
+        if (soll === false) return Response.json({ error: "Soll-Wochenstunden muss eine Zahl ≥ 0 sein" }, { status: 400 });
+        const codeClash = code ? await byMaCode(code) : null;
+        if (codeClash && codeClash.id !== id) return Response.json({ error: "MA-Code bereits vergeben" }, { status: 409 });
+        const pnrClash = pnr ? await byPersonalnr(pnr) : null;
+        if (pnrClash && pnrClash.id !== id) return Response.json({ error: "Personal-Nr. bereits vergeben" }, { status: 409 });
+
         const res = await lauf(
-          "UPDATE mitarbeiter SET name = ?, role = ?, pin = ? WHERE id = ?",
-          name.trim(), role.trim(), p, id,
+          "UPDATE mitarbeiter SET name = ?, role = ?, pin = ?, ma_code = ?, personalnr = ?, soll_std = ? WHERE id = ?",
+          name.trim(), role.trim(), p, code, pnr, soll, id,
         );
         if (res.changes === 0) return Response.json({ error: "nicht gefunden" }, { status: 404 });
-        return Response.json({ id, name: name.trim(), role: role.trim(), pin: p });
+        return Response.json({ id, name: name.trim(), role: role.trim(), pin: p, ma_code: code, personalnr: pnr, soll_std: soll });
       }),
       DELETE: nurAdmin(async (req) => {
         const res = await lauf("DELETE FROM mitarbeiter WHERE id = ?", req.params.id);
