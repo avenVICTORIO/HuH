@@ -417,6 +417,12 @@ const server = Bun.serve({
     "/terminal": () => html(terminalPage),
     "/team": () => html(dashboardPage),
     "/dashboard": um("/team"),
+    // Tischplan-/Reservierungs-App (eigenständige Svelte-App, gebaut als eine Datei).
+    // Wird im Terminal-Home als Vollbild eingebettet. Quellcode: tischplan/, Build: bun run tischplan:build.
+    "/tischplan": () =>
+      new Response(Bun.file("public/tischplan.html"), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
     "/logo.png": () => new Response(Bun.file("public/logo.png")),
 
     // ---- Favicons, App-Icons & Manifest (erzeugt via `bun run icons`) ----
