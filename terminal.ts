@@ -83,7 +83,24 @@ ${baseCss}
   #tischplan-bg .tp-zeit{font-family:var(--serif); color:var(--wald); min-width:52px;}
   #tischplan-bg .tp-name{flex:1; color:var(--ink);} #tischplan-bg .tp-det{color:var(--grey); font-size:12.5px;}
   #tischplan-bg .tp-leer{color:var(--grey); font-style:italic; padding:14px 2px;}
-  .home-front{position:relative; z-index:1; margin-top:30vh;}   /* Panel nach unten, Hintergrund oben sichtbar */
+  .home-front{position:relative; z-index:1; margin-top:30vh;}   /* (alt) */
+
+  /* ---------- Tischplan als Vollbild-Home + schlanke HuH-Leiste ---------- */
+  #screen-home.active{height:100vh; min-height:0; overflow:hidden; flex-direction:column;}
+  .huh-strip{display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--card); border-bottom:1px solid var(--line); flex:none;}
+  .huh-strip .hs-hallo{font-family:var(--serif); font-size:clamp(15px,3.5vw,19px); color:var(--wald); white-space:nowrap;}
+  .huh-strip .miniclock{font-variant-numeric:tabular-nums; font-size:14px; color:var(--clay); margin-left:auto;}
+  .huh-strip .hs-menu{background:var(--wald); color:#fff; border:none; border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer; font-family:var(--sans);}
+  .hs-aufbau{background:var(--amber); color:#fff; border:none; border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:var(--sans); white-space:nowrap;}
+  .tischplan-frame{flex:1; width:100%; border:0; display:block; background:var(--creme);}
+
+  /* Menü als Panel von rechts */
+  .menu-back{position:fixed; inset:0; z-index:45; background:rgba(34,38,31,.4); display:flex; justify-content:flex-end;}
+  .menu-karte{background:var(--creme); width:min(420px,92vw); height:100%; overflow-y:auto; padding:16px 16px calc(20px + env(safe-area-inset-bottom)); box-shadow:-16px 0 50px -20px rgba(0,0,0,.45);}
+  .mk-kopf{display:flex; align-items:center; margin-bottom:8px;}
+  .mk-kopf span{flex:1; font-family:var(--serif); font-size:20px; color:var(--wald);}
+  .mk-x{background:none; border:none; font-size:22px; color:var(--grey); cursor:pointer; line-height:1;}
+  .mk-titel{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--grey); margin:20px 0 8px;}
 
   /* Aufbau-Banner + Prozess-Buttons auf dem Home */
   .ablauf-banner{display:flex; align-items:center; gap:12px; background:var(--amber); color:#fff;
@@ -221,44 +238,49 @@ ${baseCss}
 
 <!-- ============ HOME (nach Login) ============ -->
 <section id="screen-home" class="screen">
-  <div class="topbar">
-    <img src="/logo.png" alt="Hand aufs Herz">
-    <div class="who" id="homeWho">Servus</div>
-    <div class="miniclock" id="homeClock">--:--:--</div>
-    <button class="btn-logout" id="btnLogout">Abmelden</button>
+  <!-- Schlanke HuH-Leiste über dem Tischplan -->
+  <div class="huh-strip">
+    <span class="hs-hallo" id="homeWho">Servus</span>
+    <button class="hs-aufbau" id="ablaufBanner" style="display:none"></button>
+    <span class="miniclock" id="homeClock">--:--:--</span>
+    <button class="hs-menu" id="btnMenu">☰ Menü</button>
   </div>
-  <div id="tischplan-bg"></div>
-  <div class="home-body home-front">
-    <div class="ablauf-banner" id="ablaufBanner" style="display:none"></div>
-    <div class="statuscard" id="statusCard">
-      <div class="lbl" id="statLbl">Eingestempelt seit</div>
-      <div class="since" id="statSince">--:--</div>
-      <div class="dur" id="statDur">00:00:00</div>
-      <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
-    </div>
-    <div class="prozesse" id="prozesse"></div>
-    <template id="tplMitarbeiter">
-      <a class="tile werkzeug" href="/team#meine-schichten"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
-    </template>
-    <template id="tplWerkzeuge">
-      <a class="tile werkzeug" href="/team#meine-zeiten"><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
-      <a class="tile werkzeug" href="/team#reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
-      <a class="tile werkzeug" href="/team#inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
-      <a class="tile werkzeug" href="/team#rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
-    </template>
-    <template id="tplAdmin">
-      <a class="tile werkzeug" href="/team#heute"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
-      <a class="tile werkzeug" href="/team#schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
-      <a class="tile werkzeug" href="/team#auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
-      <a class="tile werkzeug" href="/team#karte"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
-      <a class="tile werkzeug" href="/team#team"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
-    </template>
-    <div class="tiles" id="tilesWerkzeuge"></div>
-    <div class="tiles-trenner">Bald verfügbar</div>
-    <div class="tiles">
-      <div class="tile soon" data-soon="Aufgaben"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Aufgaben</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Handbuch"><span class="ico">${teamIcons.handbuch}</span><span class="t">Handbuch</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Anleitungen"><span class="ico">${teamIcons.anleitungen}</span><span class="t">Anleitungen</span><div class="badge-soon">kommt bald</div></div>
+
+  <!-- Tischplan-/Reservierungs-App im Vollbild -->
+  <iframe id="tischplanFrame" class="tischplan-frame" src="/tischplan" title="Tischplan &amp; Reservierungen" allow="fullscreen; clipboard-write"></iframe>
+
+  <!-- Menü: Ausstempeln, Abläufe, Werkzeuge, Abmelden -->
+  <div class="menu-back" id="menuBack" style="display:none">
+    <div class="menu-karte">
+      <div class="mk-kopf"><span id="mkWho">Servus</span><button class="mk-x" id="mkClose">✕</button></div>
+      <div class="statuscard" id="statusCard">
+        <div class="lbl" id="statLbl">Eingestempelt seit</div>
+        <div class="since" id="statSince">--:--</div>
+        <div class="dur" id="statDur">00:00:00</div>
+        <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
+      </div>
+      <div class="mk-titel">Abläufe</div>
+      <div class="prozesse" id="prozesse"></div>
+      <div class="mk-titel">Werkzeuge</div>
+      <template id="tplMitarbeiter">
+        <a class="tile werkzeug" href="/team#meine-schichten"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
+      </template>
+      <template id="tplWerkzeuge">
+        <a class="tile werkzeug" href="/team#meine-zeiten"><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+        <a class="tile werkzeug" href="/team#reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
+        <a class="tile werkzeug" href="/team#inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
+        <a class="tile werkzeug" href="/team#rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
+      </template>
+      <template id="tplAdmin">
+        <a class="tile werkzeug" href="/team#heute"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
+        <a class="tile werkzeug" href="/team#schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
+        <a class="tile werkzeug" href="/team#auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+        <a class="tile werkzeug" href="/team#ablaeufe"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
+        <a class="tile werkzeug" href="/team#karte"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
+        <a class="tile werkzeug" href="/team#team"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+      </template>
+      <div class="tiles" id="tilesWerkzeuge"></div>
+      <button class="bigbtn" id="btnLogout" style="background:none; border:1px solid var(--line); color:var(--grey); margin-top:18px;">Abmelden</button>
     </div>
   </div>
 
@@ -412,6 +434,8 @@ function zeigeEntscheid(){
 $("entAbbruch").addEventListener("click",sessionEnde);
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
+  { const w=$("mkWho"); if(w) w.textContent="Servus, "+current.name; }
+  { const mb=$("menuBack"); if(mb) mb.style.display="none"; }
   // Werkzeug-Karten nach Rolle: alle sehen Zeiten + Reservierungen, Admins alles.
   const ziel=$("tilesWerkzeuge");
   ziel.innerHTML="";
@@ -430,7 +454,7 @@ function renderHome(){
     $("btnStamp").textContent="Einstempeln"; $("btnStamp").className="bigbtn in";
   }
   updateDuration();
-  ladeAblaufHome(); ladeTischplan();
+  ladeAblaufHome();
 }
 function updateDuration(){
   if(!current||!current.clockedIn) return;
@@ -534,7 +558,12 @@ async function nachLogin(){
 $("vkStart").addEventListener("click",()=>{ $("vorschlag").style.display="none"; starteAblauf("aufbau"); });
 $("vkSpaeter").addEventListener("click",()=>{ $("vorschlag").style.display="none"; });
 $("ablaufBanner").addEventListener("click",()=>starteAblauf("aufbau"));
-$("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c) starteAblauf(c.dataset.proz); });
+$("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c){ $("menuBack").style.display="none"; starteAblauf(c.dataset.proz); } });
+
+/* --- HuH-Menü (Ecke) --- */
+$("btnMenu").addEventListener("click",()=>{ $("menuBack").style.display="flex"; });
+$("mkClose").addEventListener("click",()=>{ $("menuBack").style.display="none"; });
+$("menuBack").addEventListener("click",e=>{ if(e.target.id==="menuBack") $("menuBack").style.display="none"; });
 
 /* --- Ablauf-Runner --- */
 let abProzess="aufbau", abDaten=null;
