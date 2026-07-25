@@ -73,6 +73,64 @@ ${baseCss}
   }
   .tiles-trenner::before, .tiles-trenner::after{content:""; flex:1; height:1px; background:var(--line);}
 
+  /* ---------- Reservierungs-Hintergrund (Platzhalter für den grafischen Tischplan) ---------- */
+  #screen-home{position:relative;}
+  #tischplan-bg{position:absolute; left:0; right:0; top:66px; bottom:0; z-index:0;
+    padding:14px 20px 40px; overflow:hidden; opacity:.55; pointer-events:none; -webkit-user-select:none; user-select:none;}
+  #tischplan-bg .tp-kopf{font-family:var(--serif); color:var(--wald); font-size:clamp(18px,4vw,22px); margin:2px 0 4px;}
+  #tischplan-bg .tp-kpi{font-size:13px; color:var(--clay); margin-bottom:10px;}
+  #tischplan-bg .tp-res{display:flex; gap:12px; align-items:baseline; padding:6px 2px; border-bottom:1px solid var(--line); font-size:14px; max-width:640px;}
+  #tischplan-bg .tp-zeit{font-family:var(--serif); color:var(--wald); min-width:52px;}
+  #tischplan-bg .tp-name{flex:1; color:var(--ink);} #tischplan-bg .tp-det{color:var(--grey); font-size:12.5px;}
+  #tischplan-bg .tp-leer{color:var(--grey); font-style:italic; padding:14px 2px;}
+  .home-front{position:relative; z-index:1; margin-top:30vh;}   /* Panel nach unten, Hintergrund oben sichtbar */
+
+  /* Aufbau-Banner + Prozess-Buttons auf dem Home */
+  .ablauf-banner{display:flex; align-items:center; gap:12px; background:var(--amber); color:#fff;
+    border-radius:14px; padding:13px 16px; margin-bottom:16px; cursor:pointer; box-shadow:0 10px 26px -14px rgba(176,85,58,.7);}
+  .ablauf-banner .b-txt{flex:1; font-weight:600;} .ablauf-banner .b-go{font-size:13px; opacity:.9; white-space:nowrap;}
+  .prozesse{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:0 0 18px;}
+  .proz{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 12px; text-align:center; cursor:pointer; transition:transform .06s;}
+  .proz:active{transform:scale(.97);} .proz.fertig{border-color:var(--wald-hell); background:#eef2ec;}
+  .proz .pt{font-family:var(--serif); font-size:clamp(16px,4vw,19px); color:var(--wald);}
+  .proz .pp{font-variant-numeric:tabular-nums; font-size:13px; color:var(--clay); margin-top:5px;}
+  .proz .pp.ok{color:var(--wald);}
+
+  /* Vorschlag-Overlay (direkt nach Login) */
+  .vorschlag-back{position:fixed; inset:0; z-index:40; background:rgba(34,38,31,.45); display:flex; align-items:center; justify-content:center; padding:6vw;}
+  .vorschlag-karte{background:var(--card); border-radius:22px; padding:30px 28px; width:min(460px,92vw); text-align:center; box-shadow:0 24px 60px -20px rgba(0,0,0,.5);}
+  .vk-titel{font-family:var(--serif); font-size:clamp(24px,6vw,32px); color:var(--wald); margin-bottom:8px;}
+  .vk-text{font-size:clamp(15px,3.6vw,17px); color:var(--clay); margin:0 0 22px;}
+  .vk-primary{display:block; width:100%; border:none; border-radius:16px; padding:18px; background:var(--wald); color:#fff; font-size:clamp(17px,4.6vw,20px); font-weight:600; cursor:pointer; font-family:var(--sans);}
+  .vk-secondary{display:block; width:100%; margin-top:12px; background:none; border:1px solid var(--line); border-radius:16px; padding:14px; color:var(--clay); font-size:15px; cursor:pointer; font-family:var(--sans);}
+
+  /* ---------- ABLAUF-SCREEN (Aufbau/Leerlauf/Abbau) ---------- */
+  #screen-ablauf .ablauf-fortschritt{font-variant-numeric:tabular-nums; font-size:16px; color:var(--wald); font-weight:600;}
+  .ablauf-body{flex:1; overflow-y:auto; padding:18px; max-width:720px; width:100%; margin:0 auto;}
+  .ab-gruppe{font-family:var(--mono,var(--sans)); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--grey); margin:18px 0 8px;}
+  .ab-gruppe:first-child{margin-top:0;}
+  .ab-task{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:10px; transition:opacity .15s;}
+  .ab-task .tt{font-size:clamp(16px,4vw,18px); color:var(--ink); display:flex; align-items:center; gap:10px;}
+  .ab-task.fertig{opacity:.5;} .ab-task.fertig .tt{text-decoration:line-through; color:var(--wald);}
+  .ab-task.kommt{opacity:.5;}
+  .ab-check{width:24px; height:24px; border-radius:50%; border:2px solid var(--line); flex:none; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px;}
+  .ab-task.fertig .ab-check{background:var(--wald); border-color:var(--wald);}
+  .ab-task.aktiv{border-color:var(--wald); box-shadow:0 10px 26px -16px rgba(60,74,59,.6);}
+  .ab-task.aktiv .ab-check{border-color:var(--wald);}
+  .ab-info{margin:12px 0 0; font-size:14.5px; color:var(--clay); line-height:1.5; background:var(--creme); border-radius:10px; padding:12px 14px;}
+  .ab-erledigt{display:block; width:100%; margin-top:14px; border:none; border-radius:12px; padding:16px; background:var(--wald); color:#fff; font-size:clamp(16px,4.4vw,19px); font-weight:600; cursor:pointer; font-family:var(--sans); letter-spacing:.3px;}
+  .ab-erledigt:active{background:#2f4a34;}
+  .ablauf-foot{padding:14px 18px calc(14px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--card); text-align:center;}
+  .ablauf-abbruch{background:none; border:1px solid var(--line); color:var(--rot); border-radius:12px; padding:12px 22px; font-size:15px; cursor:pointer; font-family:var(--sans);}
+
+  /* Rote Unterbrechen-Bestätigung */
+  .confirm-back{position:fixed; inset:0; z-index:60; background:rgba(154,59,52,.28); display:flex; align-items:center; justify-content:center; padding:6vw;}
+  .confirm-karte{background:var(--card); border:2px solid var(--rot); border-radius:22px; padding:30px 28px; width:min(480px,92vw); text-align:center; box-shadow:0 24px 60px -18px rgba(154,59,52,.55);}
+  .ck-titel{font-family:var(--serif); font-size:clamp(26px,6.5vw,36px); color:var(--rot); margin-bottom:10px;}
+  .ck-text{font-size:clamp(15px,3.6vw,17px); color:var(--ink); margin:0 0 24px; line-height:1.5;}
+  .ck-ja{display:block; width:100%; border:none; border-radius:16px; padding:18px; background:var(--rot); color:#fff; font-size:clamp(17px,4.6vw,20px); font-weight:700; cursor:pointer; font-family:var(--sans);}
+  .ck-nein{display:block; width:100%; margin-top:12px; background:var(--wald); color:#fff; border:none; border-radius:16px; padding:16px; font-size:16px; font-weight:600; cursor:pointer; font-family:var(--sans);}
+
   /* ---------- ENTSCHEIDUNG (nach Login) ---------- */
   #screen-entscheid{align-items:center; justify-content:center; padding:4vh 6vw; text-align:center;}
   .ent-logo{width:96px; height:auto; opacity:.92; margin-bottom:2vh;}
@@ -169,13 +227,16 @@ ${baseCss}
     <div class="miniclock" id="homeClock">--:--:--</div>
     <button class="btn-logout" id="btnLogout">Abmelden</button>
   </div>
-  <div class="home-body">
+  <div id="tischplan-bg"></div>
+  <div class="home-body home-front">
+    <div class="ablauf-banner" id="ablaufBanner" style="display:none"></div>
     <div class="statuscard" id="statusCard">
       <div class="lbl" id="statLbl">Eingestempelt seit</div>
       <div class="since" id="statSince">--:--</div>
       <div class="dur" id="statDur">00:00:00</div>
       <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
     </div>
+    <div class="prozesse" id="prozesse"></div>
     <template id="tplMitarbeiter">
       <a class="tile werkzeug" href="/team#meine-schichten"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
     </template>
@@ -198,6 +259,39 @@ ${baseCss}
       <div class="tile soon" data-soon="Aufgaben"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Aufgaben</span><div class="badge-soon">kommt bald</div></div>
       <div class="tile soon" data-soon="Handbuch"><span class="ico">${teamIcons.handbuch}</span><span class="t">Handbuch</span><div class="badge-soon">kommt bald</div></div>
       <div class="tile soon" data-soon="Anleitungen"><span class="ico">${teamIcons.anleitungen}</span><span class="t">Anleitungen</span><div class="badge-soon">kommt bald</div></div>
+    </div>
+  </div>
+
+  <!-- Vorschlag direkt nach Login -->
+  <div class="vorschlag-back" id="vorschlag" style="display:none">
+    <div class="vorschlag-karte">
+      <div class="vk-titel" id="vkTitel">Bereit für den Aufbau?</div>
+      <p class="vk-text" id="vkText">Sollen wir den Aufbau gemeinsam durchgehen?</p>
+      <button class="vk-primary" id="vkStart">Aufbau starten</button>
+      <button class="vk-secondary" id="vkSpaeter">Später</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ABLAUF (Aufbau / Leerlauf / Abbau) ============ -->
+<section id="screen-ablauf" class="screen">
+  <div class="topbar">
+    <button class="btn-logout" id="abZurueck">‹ Zum Tischplan</button>
+    <div class="who" id="abTitel">Aufbau</div>
+    <div class="ablauf-fortschritt" id="abFort">0/0</div>
+  </div>
+  <div class="ablauf-body" id="ablaufBody"></div>
+  <div class="ablauf-foot">
+    <button class="ablauf-abbruch" id="abUnterbrechen">Aufbau unterbrechen</button>
+  </div>
+
+  <!-- Rote Bestätigung -->
+  <div class="confirm-back" id="abConfirm" style="display:none">
+    <div class="confirm-karte">
+      <div class="ck-titel" id="ckTitel">Aufbau unterbrechen?</div>
+      <p class="ck-text" id="ckText">Es sind noch Aufgaben offen. Der Aufbau bleibt als „offen" markiert – du kannst jederzeit weitermachen.</p>
+      <button class="ck-ja" id="abConfirmJa">Ja, unterbrechen</button>
+      <button class="ck-nein" id="abConfirmNein">Weiter im Aufbau</button>
     </div>
   </div>
 </section>
@@ -289,7 +383,7 @@ function zeigeEntscheid(){
     $("entStatus").innerHTML="Deine Schicht läuft seit <b>"+hm(current.since)+" Uhr</b>.";
     primary.textContent="Weiter zum Arbeitsbereich";
     primary.className="ent-primary weiter";
-    primary.onclick=()=>{ renderHome(); show("screen-home"); };
+    primary.onclick=()=>{ nachLogin(); };
     secondary.textContent="Schicht beenden & abmelden";
     secondary.className="ent-secondary ende";
     secondary.onclick=async ()=>{
@@ -307,11 +401,11 @@ function zeigeEntscheid(){
       if(!d) return;
       current.clockedIn=true; current.since=d.ts;
       toast("Servus "+esc(current.name)+"! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
-      renderHome(); show("screen-home");
+      nachLogin();
     };
     secondary.textContent="Ohne Stempeln weiter";
     secondary.className="ent-secondary";
-    secondary.onclick=()=>{ renderHome(); show("screen-home"); };
+    secondary.onclick=()=>{ nachLogin(); };
   }
   show("screen-entscheid");
 }
@@ -336,6 +430,7 @@ function renderHome(){
     $("btnStamp").textContent="Einstempeln"; $("btnStamp").className="bigbtn in";
   }
   updateDuration();
+  ladeAblaufHome(); ladeTischplan();
 }
 function updateDuration(){
   if(!current||!current.clockedIn) return;
@@ -378,6 +473,120 @@ $("btnLogout").addEventListener("click",sessionEnde);
 document.querySelectorAll(".tile.soon").forEach(t=>{
   t.addEventListener("click",()=>toast(esc(t.dataset.soon)+" richten wir als Nächstes ein.","",1800));
 });
+
+/* ========== ABENDFÜHRUNG: Aufbau / Leerlauf / Abbau ========== */
+const AB_LABEL={aufbau:"Aufbau",leerlauf:"Aufgaben bei Leerlauf",abbau:"Abbau"};
+const AB_KURZ={aufbau:"Aufbau",leerlauf:"Leerlauf",abbau:"Abbau"};
+function heute(){ const d=new Date(); return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); }
+
+/* --- Home: Reservierungs-Hintergrund (Tischplan-Platzhalter) --- */
+async function ladeTischplan(){
+  const bg=$("tischplan-bg"); if(!bg) return;
+  let liste=[], u=null;
+  try{
+    const [a,b]=await Promise.all([
+      fetch("/api/reservierungen?datum="+heute()).then(r=>r.json()),
+      fetch("/api/reservierungen-uebersicht?datum="+heute()).then(r=>r.json()),
+    ]);
+    liste=Array.isArray(a)?a:[]; u=b;
+  }catch(e){ return; }
+  const aktiv=liste.filter(r=>r.status==="offen"||r.status==="bestaetigt");
+  let html='<div class="tp-kopf">Tischplan heute</div>';
+  if(u&&!u.fehler) html+='<div class="tp-kpi">'+(u.gaeste||0)+' Gäste · '+(u.reservierungen||0)+' Reservierungen · drinnen '+(u.drinnen||0)+' / draußen '+(u.draussen||0)+'</div>';
+  if(!aktiv.length) html+='<div class="tp-leer">Heute noch keine Reservierungen.</div>';
+  else for(const r of aktiv){
+    html+='<div class="tp-res"><span class="tp-zeit">'+esc(r.zeit)+'</span><span class="tp-name">'+esc(r.name)+'</span><span class="tp-det">'+r.personen+' Pers. · '+(r.bereich==="draussen"?"Draußen":"Drinnen")+'</span></div>';
+  }
+  bg.innerHTML=html;
+}
+
+/* --- Home: Banner + Prozess-Buttons aus dem Tages-Status --- */
+async function ladeAblaufHome(){
+  let st;
+  try{ st=await fetch("/api/ablauf/status?datum="+heute()).then(r=>r.json()); }catch(e){ return null; }
+  if(!st||st.fehler) return null;
+  const b=$("ablaufBanner");
+  if(st.aufbau.total>0 && !st.aufbau.fertig){
+    b.style.display="";
+    b.innerHTML='<span class="b-txt">Aufbau noch offen · '+st.aufbau.done+'/'+st.aufbau.total+' erledigt</span><span class="b-go">Fortsetzen ›</span>';
+  }else b.style.display="none";
+  $("prozesse").innerHTML=["aufbau","leerlauf","abbau"].map(p=>{
+    const s=st[p]||{done:0,total:0,fertig:false};
+    const ok=s.total>0 && s.fertig;
+    return '<div class="proz'+(ok?" fertig":"")+'" data-proz="'+p+'"><div class="pt">'+AB_KURZ[p]+'</div>'+
+      '<div class="pp'+(ok?" ok":"")+'">'+(s.total?(ok?"✓ fertig":s.done+"/"+s.total):"—")+'</div></div>';
+  }).join("");
+  return st;
+}
+
+/* --- Vorschlag direkt nach Login --- */
+function zeigeVorschlag(st){
+  $("vkText").textContent = st.aufbau.done>0
+    ? "Der Aufbau ist noch nicht fertig ("+st.aufbau.done+"/"+st.aufbau.total+"). Weitermachen?"
+    : "Sollen wir den Aufbau gemeinsam durchgehen?";
+  $("vorschlag").style.display="";
+}
+async function nachLogin(){
+  renderHome(); show("screen-home");
+  const st=await fetch("/api/ablauf/status?datum="+heute()).then(r=>r.json()).catch(()=>null);
+  if(st&&!st.fehler&&st.aufbau.total>0&&!st.aufbau.fertig) zeigeVorschlag(st);
+}
+$("vkStart").addEventListener("click",()=>{ $("vorschlag").style.display="none"; starteAblauf("aufbau"); });
+$("vkSpaeter").addEventListener("click",()=>{ $("vorschlag").style.display="none"; });
+$("ablaufBanner").addEventListener("click",()=>starteAblauf("aufbau"));
+$("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c) starteAblauf(c.dataset.proz); });
+
+/* --- Ablauf-Runner --- */
+let abProzess="aufbau", abDaten=null;
+async function starteAblauf(prozess){
+  abProzess=prozess;
+  $("abTitel").textContent=AB_LABEL[prozess];
+  $("abUnterbrechen").textContent=AB_KURZ[prozess]+" unterbrechen";
+  $("ckTitel").textContent=AB_KURZ[prozess]+" unterbrechen?";
+  await ladeAblauf();
+  show("screen-ablauf");
+}
+async function ladeAblauf(){
+  abDaten=await fetch("/api/ablauf?prozess="+abProzess+"&datum="+heute()).then(r=>r.json());
+  renderAblauf();
+}
+function renderAblauf(){
+  const aufg=(abDaten&&abDaten.aufgaben)||[];
+  const done=aufg.filter(a=>a.erledigt).length;
+  $("abFort").textContent=done+"/"+aufg.length;
+  const aktiv=aufg.find(a=>!a.erledigt);
+  const aktivId=aktiv?aktiv.id:null;
+  let html="", letzteGruppe=null;
+  for(const a of aufg){
+    if(a.gruppe && a.gruppe!==letzteGruppe){ html+='<div class="ab-gruppe">'+esc(a.gruppe)+'</div>'; letzteGruppe=a.gruppe; }
+    const zustand=a.erledigt?"fertig":(a.id===aktivId?"aktiv":"kommt");
+    html+='<div class="ab-task '+zustand+'"><div class="tt"><span class="ab-check">'+(a.erledigt?"✓":"")+'</span>'+esc(a.titel)+'</div>';
+    if(zustand==="aktiv"){
+      if(a.info) html+='<div class="ab-info">'+esc(a.info)+'</div>';
+      html+='<button class="ab-erledigt" data-erledigt="'+a.id+'">Erledigt ✓</button>';
+    }
+    html+='</div>';
+  }
+  $("ablaufBody").innerHTML=html || '<div class="tp-leer" style="padding:20px">Für diesen Ablauf sind noch keine Aufgaben hinterlegt.</div>';
+}
+$("ablaufBody").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-erledigt]"); if(!b) return;
+  b.disabled=true;
+  await fetch("/api/ablauf/erledigt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({aufgabe_id:b.dataset.erledigt,datum:heute()})});
+  await ladeAblauf();
+  const aufg=(abDaten&&abDaten.aufgaben)||[];
+  const rest=aufg.filter(a=>!a.erledigt).length;
+  if(aufg.length>0 && rest===0){
+    if(abProzess==="aufbau") toast("Aufbau fertig! <span class='big'>Der Tischplan ist bereit</span>","in",2600);
+    else toast(AB_KURZ[abProzess]+" abgeschlossen. Danke!","in",2000);
+    setTimeout(zurueckHome,1400);
+  }
+});
+$("abZurueck").addEventListener("click",zurueckHome);
+$("abUnterbrechen").addEventListener("click",()=>{ $("abConfirm").style.display=""; });
+$("abConfirmNein").addEventListener("click",()=>{ $("abConfirm").style.display="none"; });
+$("abConfirmJa").addEventListener("click",()=>{ $("abConfirm").style.display="none"; zurueckHome(); });
+function zurueckHome(){ renderHome(); show("screen-home"); }
 </script>
 </body>
 </html>`;
