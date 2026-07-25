@@ -355,6 +355,7 @@ ${baseCss}
   <div class="tab" data-v="karte">Karte</div>
   <div class="tab" data-v="schichtplan">Schichtplan</div>
   <div class="tab" data-v="auswertung">Auswertung</div>
+  <div class="tab" data-v="ablaeufe">Abläufe</div>
   <div class="tab" data-v="team">Team</div>
 </nav>
 <div class="nav-schleier" id="navSchleier"></div>
@@ -458,6 +459,20 @@ ${baseCss}
       <input class="rl" id="rolleNeu" placeholder="Neue Rolle (z. B. Spüler)" maxlength="40">
       <button id="btnRolleNeu">+ Anlegen</button>
     </div>
+  </section>
+
+  <!-- ===== VIEW: ABLÄUFE / CHECKLISTEN (Admin) ===== -->
+  <section class="view" id="v-ablaeufe">
+    <div class="sec-title">Abläufe &amp; Checklisten</div>
+    <p class="hint">Diese Aufgaben führen die Mitarbeiter am Terminal durch den Abend. Die <b>Reihenfolge ist chronologisch</b> (mit ▲▼ ändern); die <b>Info</b> klappt bei der jeweils aktiven Aufgabe automatisch aus. Beim Aufbau erscheint nach der letzten Aufgabe der Tischplan.</p>
+    <div class="ranges" id="abProzesse"></div>
+    <div id="abListe"><div class="empty">lädt …</div></div>
+    <div class="miniform">
+      <input class="nm" id="abNeuTitel" placeholder="Neue Aufgabe" maxlength="200">
+      <input class="rl" id="abNeuGruppe" placeholder="Gruppe (optional)" maxlength="60">
+      <button id="abAdd">+ Hinzufügen</button>
+    </div>
+    <input id="abNeuInfo" placeholder="Zusatzinfo (optional)" maxlength="1000" style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; font-family:var(--sans); margin-top:-4px">
   </section>
 
   <!-- ===== VIEW: WEBSITE-KARTE (Admin) ===== -->
@@ -654,12 +669,13 @@ function aktiviere(v){
   if(v==="karte") loadKarte();
   if(v==="schichtplan") loadSp();
   if(v==="auswertung") loadReport();
+  if(v==="ablaeufe") loadAblaeufe();
   if(v==="team") loadTeam();
 }
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>aktiviere(t.dataset.v)));
 
 const erlaubteTabs=()=> ME.admin
-  ? ["heute","reservierungen","schichtplan","meine-zeiten","inventur","rezepte","karte","auswertung","team"]
+  ? ["heute","reservierungen","schichtplan","meine-zeiten","inventur","rezepte","karte","auswertung","ablaeufe","team"]
   : ["meine-schichten","meine-zeiten","reservierungen","inventur","rezepte"];
 
 function starte(){
@@ -1832,6 +1848,71 @@ $("btnAdd").addEventListener("click",async ()=>{
   const r=await fetch("/api/mitarbeiter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
   $("newName").value=""; $("newRole").value=""; $("newPin").value=""; $("newCode").value=""; $("newPnr").value=""; $("newSoll").value=""; loadTeam();
+});
+
+/* ===== ABLÄUFE / CHECKLISTEN (Admin) ===== */
+const AB_LABEL={aufbau:"Aufbau",leerlauf:"Leerlauf",abbau:"Abbau"};
+let abProzess="aufbau", abEditId=null, abList=[];
+function abChips(){
+  $("abProzesse").innerHTML=Object.keys(AB_LABEL).map(p=>
+    '<div class="range'+(p===abProzess?" active":"")+'" data-abp="'+p+'">'+AB_LABEL[p]+'</div>').join("");
+}
+async function loadAblaeufe(){
+  abChips();
+  const data=await fetch("/api/ablauf?prozess="+abProzess+"&datum="+heuteISO()).then(x=>x.json());
+  abList=data.aufgaben||[];
+  $("abListe").innerHTML = abList.length ? abList.map((a,i)=>{
+    if(a.id===abEditId){
+      return '<div class="card">'+
+        '<div class="row">'+
+          '<input class="rowinput nm" id="abETitel" value="'+esc(a.titel)+'">'+
+          '<input class="rowinput rl" id="abEGruppe" value="'+esc(a.gruppe||"")+'" placeholder="Gruppe">'+
+          '<button class="iconbtn edit" data-absave="'+a.id+'">Speichern</button>'+
+          '<button class="iconbtn del" data-abcancel>Abbrechen</button>'+
+        '</div>'+
+        '<textarea class="rowinput" id="abEInfo" placeholder="Zusatzinfo (klappt am Terminal aus)" style="width:100%; margin-top:8px; min-height:56px; font-family:var(--sans)">'+esc(a.info||"")+'</textarea>'+
+      '</div>';
+    }
+    return '<div class="card row">'+
+      '<div class="nm">'+(a.gruppe?'<small style="color:var(--clay); text-transform:uppercase; letter-spacing:.04em">'+esc(a.gruppe)+'</small>':'')+esc(a.titel)+(a.info?'<small>'+esc(a.info)+'</small>':'')+'</div>'+
+      '<button class="iconbtn" data-abup="'+a.id+'"'+(i===0?' disabled style="opacity:.3"':'')+' title="nach oben">▲</button>'+
+      '<button class="iconbtn" data-abdown="'+a.id+'"'+(i===abList.length-1?' disabled style="opacity:.3"':'')+' title="nach unten">▼</button>'+
+      '<button class="iconbtn edit" data-abedit="'+a.id+'">Bearbeiten</button>'+
+      '<button class="iconbtn del" data-abdel="'+a.id+'">Löschen</button></div>';
+  }).join("") : '<div class="empty">Noch keine Aufgaben – lege unten die erste an.</div>';
+}
+$("abProzesse").addEventListener("click",e=>{
+  const c=e.target.closest("[data-abp]"); if(!c) return;
+  abProzess=c.dataset.abp; abEditId=null; loadAblaeufe();
+});
+$("abListe").addEventListener("click",async e=>{
+  const t=e.target;
+  if(t.dataset.abedit){ abEditId=t.dataset.abedit; return loadAblaeufe(); }
+  if(t.dataset.abcancel!==undefined){ abEditId=null; return loadAblaeufe(); }
+  if(t.dataset.abdel){ if(confirm("Aufgabe wirklich löschen?")){ await fetch("/api/ablauf/aufgaben/"+t.dataset.abdel,{method:"DELETE"}); loadAblaeufe(); } return; }
+  if(t.dataset.absave){
+    const body={titel:$("abETitel").value.trim(),gruppe:$("abEGruppe").value.trim(),info:$("abEInfo").value.trim()};
+    if(!body.titel){ alert("Titel ist Pflicht"); return; }
+    const r=await fetch("/api/ablauf/aufgaben/"+t.dataset.absave,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+    abEditId=null; loadAblaeufe(); return;
+  }
+  const move=t.dataset.abup||t.dataset.abdown;
+  if(move){
+    const dir=t.dataset.abup?-1:1;
+    const ids=abList.map(a=>a.id); const i=ids.indexOf(move); const j=i+dir;
+    if(j<0||j>=ids.length) return;
+    ids.splice(i,1); ids.splice(j,0,move);
+    await fetch("/api/ablauf/aufgaben-reihenfolge",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids})});
+    loadAblaeufe();
+  }
+});
+$("abAdd").addEventListener("click",async ()=>{
+  const body={prozess:abProzess,titel:$("abNeuTitel").value.trim(),gruppe:$("abNeuGruppe").value.trim(),info:$("abNeuInfo").value.trim()};
+  if(!body.titel){ alert("Titel ist Pflicht"); return; }
+  const r=await fetch("/api/ablauf/aufgaben",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+  $("abNeuTitel").value=""; $("abNeuGruppe").value=""; $("abNeuInfo").value=""; loadAblaeufe();
 });
 
 boot();

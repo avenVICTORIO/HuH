@@ -17,6 +17,7 @@ import {
 import { nichtGefundenPage } from "./site/fehler";
 import * as res from "./reservierungen";
 import * as kueche from "./rezepte";
+import * as ablauf from "./ablaeufe";
 import { OEFFNUNG } from "./site/info";
 import {
   logoutCookie,
@@ -1297,6 +1298,90 @@ const server = Bun.serve({
           );
         }
         const r = await lauf("DELETE FROM rollen WHERE name = ?", name);
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return new Response(null, { status: 204 });
+      }),
+    },
+
+    // ---- Abendführung: Ablauf-Checklisten ----
+    "/api/ablauf": nurTeam(async (req) => {
+      const q = new URL(req.url).searchParams;
+      const prozess = q.get("prozess");
+      const datum = q.get("datum") ?? res.alsDatum(new Date());
+      if (!ablauf.istProzess(prozess)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
+      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await ablauf.tag(prozess, datum));
+    }),
+    "/api/ablauf/status": nurTeam(async (req) => {
+      const datum = new URL(req.url).searchParams.get("datum") ?? res.alsDatum(new Date());
+      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await ablauf.status(datum));
+    }),
+    "/api/ablauf/erledigt": {
+      POST: nurTeam(async (req, ich) => {
+        const b = await req.json().catch(() => null);
+        const aufgabeId = text(b?.aufgabe_id, 40);
+        const datum = text(b?.datum, 10) || res.alsDatum(new Date());
+        if (!aufgabeId || !res.istDatum(datum)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
+        await ablauf.erledigtSetzen(aufgabeId, datum, ich.id);
+        return Response.json({ ok: true });
+      }),
+      DELETE: nurTeam(async (req) => {
+        const b = await req.json().catch(() => null);
+        const aufgabeId = text(b?.aufgabe_id, 40);
+        const datum = text(b?.datum, 10) || res.alsDatum(new Date());
+        if (!aufgabeId || !res.istDatum(datum)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
+        await ablauf.erledigtLoeschen(aufgabeId, datum);
+        return Response.json({ ok: true });
+      }),
+    },
+    // Katalog pflegen (Admin)
+    "/api/ablauf/aufgaben": {
+      POST: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const prozess = b?.prozess;
+        const titel = text(b?.titel, 200);
+        if (!ablauf.istProzess(prozess)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
+        if (!titel) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
+        const zeile = {
+          id: randomUUID(), prozess, gruppe: text(b?.gruppe, 60) || null,
+          titel, info: text(b?.info, 1000) || null,
+          sortierung: await ablauf.naechsteSortierung(prozess), aktiv: 1,
+        };
+        await lauf(
+          "INSERT INTO ablauf_aufgaben (id, prozess, gruppe, titel, info, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, 1)",
+          zeile.id, zeile.prozess, zeile.gruppe, zeile.titel, zeile.info, zeile.sortierung,
+        );
+        return Response.json(zeile, { status: 201 });
+      }),
+    },
+    // Reihenfolge innerhalb eines Prozesses: Array von Aufgaben-IDs = neue Sortierung.
+    "/api/ablauf/aufgaben-reihenfolge": {
+      PUT: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
+        if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
+        for (let i = 0; i < ids.length; i++) {
+          await lauf("UPDATE ablauf_aufgaben SET sortierung = ? WHERE id = ?", i, ids[i]);
+        }
+        return Response.json({ ok: true });
+      }),
+    },
+    "/api/ablauf/aufgaben/:id": {
+      PUT: nurAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        const titel = text(b?.titel, 200);
+        if (!titel) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
+        const aktiv = b?.aktiv === 0 || b?.aktiv === false ? 0 : 1;
+        const r = await lauf(
+          "UPDATE ablauf_aufgaben SET gruppe = ?, titel = ?, info = ?, aktiv = ? WHERE id = ?",
+          text(b?.gruppe, 60) || null, titel, text(b?.info, 1000) || null, aktiv, req.params.id,
+        );
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return Response.json({ ok: true });
+      }),
+      DELETE: nurAdmin(async (req) => {
+        const r = await lauf("DELETE FROM ablauf_aufgaben WHERE id = ?", req.params.id);
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
       }),

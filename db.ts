@@ -317,6 +317,31 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       CREATE UNIQUE INDEX ux_personalnr ON mitarbeiter(personalnr);
     `,
   },
+  {
+    // Abendführung: Aufgaben-Katalog (Aufbau/Leerlauf/Abbau) + geteilter Tages-Fortschritt.
+    id: "013-ablaeufe",
+    sql: /* sql */ `
+      CREATE TABLE ablauf_aufgaben (
+        id         TEXT PRIMARY KEY,
+        prozess    TEXT NOT NULL CHECK (prozess IN ('aufbau','leerlauf','abbau')),
+        gruppe     TEXT,
+        titel      TEXT NOT NULL,
+        info       TEXT,
+        sortierung INTEGER NOT NULL DEFAULT 0,
+        aktiv      INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX ix_ablauf_prozess ON ablauf_aufgaben(prozess, sortierung);
+
+      CREATE TABLE ablauf_erledigt (
+        id         TEXT PRIMARY KEY,
+        datum      TEXT NOT NULL,
+        aufgabe_id TEXT NOT NULL REFERENCES ablauf_aufgaben(id) ON DELETE CASCADE,
+        von        TEXT REFERENCES mitarbeiter(id) ON DELETE SET NULL,
+        am         DOUBLE PRECISION NOT NULL,
+        UNIQUE (datum, aufgabe_id)
+      );
+    `,
+  },
 ];
 
 async function migrieren() {
@@ -879,6 +904,21 @@ async function rezeptDetailsSaeen() {
   console.log(`📖 Rezepte auf 20er-Ansätze skaliert (${kleine.length}) und Zubereitungen hinterlegt`);
 }
 
+/** Ablauf-Checklisten (Aufbau/Leerlauf/Abbau) aus dem Qualitätsmanagement-Dokument. */
+async function ablaeufeSaeen() {
+  if (await eins("SELECT 1 AS x FROM einstellungen WHERE k = 'ablaeufe_seed'")) return;
+  const { ABLAEUFE_SEED } = await import("./ablaeufe-daten");
+  const sort: Record<string, number> = { aufbau: 0, leerlauf: 0, abbau: 0 };
+  for (const a of ABLAEUFE_SEED) {
+    await lauf(
+      "INSERT INTO ablauf_aufgaben (id, prozess, gruppe, titel, info, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      randomUUID(), a.prozess, a.gruppe, a.titel, a.info, sort[a.prozess]++,
+    );
+  }
+  await lauf("INSERT INTO einstellungen (k, v) VALUES ('ablaeufe_seed', '1') ON CONFLICT (k) DO NOTHING");
+  console.log(`🌱 Abläufe befüllt: ${ABLAEUFE_SEED.length} Aufgaben (Aufbau/Leerlauf/Abbau)`);
+}
+
 // Beim Import initialisieren -> Server und postinstall bekommen eine fertige DB.
 await migrieren();
 await saeen();
@@ -888,3 +928,4 @@ await karteSaeen();
 await karteKuecheBackfill();
 await kartenKuecheSaeen();
 await rezeptDetailsSaeen();
+await ablaeufeSaeen();
