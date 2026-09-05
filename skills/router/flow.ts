@@ -1,20 +1,19 @@
-// System-Flow „Skill-Router“: bekommt jede Chat-Nachricht, die nicht die Antwort
-// auf eine offene Rückfrage ist, und entscheidet per KI, ob und welcher Flow
-// gestartet wird. Keine Regex, keine Schlüsselwörter – nur die Beschreibungen
-// und Beispiele der Flows.
-import type { Flow } from "../typen";
-import erkennen from "./actors/erkennen";
+// System flow "Skill-Router": receives every chat message that is not an answer to
+// a pending question and decides – by AI, from the flows' descriptions and examples,
+// never by keywords – whether and which flow to hand off to.
+import type { Flow } from "../types";
+import detect from "./actors/detect";
 
 const flow: Flow = {
   id: "router",
   name: "Skill-Router",
-  beschreibung:
+  description:
     "Liest jede Chat-Nachricht mit und entscheidet, ob sie einen Skill startet. Versteht Absichten aus den Beschreibungen und Beispielen der Flows – ohne Schlüsselwörter.",
-  beispiele: [],
+  examples: [],
   system: true,
-  start: "erkennen",
-  actors: [erkennen],
-  kanten: [],
+  start: "detect",
+  actors: [detect],
+  edges: [],
 };
 
 export default flow;

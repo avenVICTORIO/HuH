@@ -499,6 +499,30 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       CREATE INDEX ix_skill_laeufe_eltern ON skill_laeufe(eltern_id);
     `,
   },
+  {
+    // Actor-Schnittstelle auf Englisch: Status, Schritt-Arten, Flow- und Actor-IDs.
+    id: "022-skills-english",
+    sql: /* sql */ `
+      ALTER TABLE skill_laeufe DROP CONSTRAINT skill_laeufe_status_check;
+      UPDATE skill_laeufe SET status = CASE status
+        WHEN 'laeuft' THEN 'running' WHEN 'wartet' THEN 'waiting' WHEN 'kind' THEN 'child'
+        WHEN 'fertig' THEN 'done' WHEN 'abgebrochen' THEN 'cancelled' WHEN 'fehler' THEN 'error' ELSE status END;
+      ALTER TABLE skill_laeufe ADD CONSTRAINT skill_laeufe_status_check
+        CHECK (status IN ('running','waiting','child','done','cancelled','error'));
+      UPDATE skill_laeufe SET flow = CASE flow WHEN 'zeiten-eintragen' THEN 'log-time' WHEN 'bestaetigung' THEN 'confirm' ELSE flow END;
+      UPDATE skill_laeufe SET
+        aktueller_actor = CASE aktueller_actor WHEN 'verstehen' THEN 'understand' WHEN 'pruefen' THEN 'validate'
+          WHEN 'bestaetigen' THEN 'decide' WHEN 'entscheiden' THEN 'decide' WHEN 'eintragen' THEN 'record'
+          WHEN 'fragen' THEN 'ask' WHEN 'erkennen' THEN 'detect' ELSE aktueller_actor END,
+        rueckkehr_actor = CASE rueckkehr_actor WHEN 'entscheiden' THEN 'decide' ELSE rueckkehr_actor END;
+      UPDATE skill_schritte SET
+        art = CASE art WHEN 'weiter' THEN 'tell' WHEN 'frage' THEN 'ask' WHEN 'starte' THEN 'handoff' WHEN 'rufe' THEN 'call'
+          WHEN 'fertig' THEN 'done' WHEN 'abbruch' THEN 'cancel' WHEN 'fehler' THEN 'error' ELSE art END,
+        actor = CASE actor WHEN 'verstehen' THEN 'understand' WHEN 'pruefen' THEN 'validate'
+          WHEN 'bestaetigen' THEN 'decide' WHEN 'entscheiden' THEN 'decide' WHEN 'eintragen' THEN 'record'
+          WHEN 'fragen' THEN 'ask' WHEN 'erkennen' THEN 'detect' ELSE actor END;
+    `,
+  },
 ];
 
 async function migrieren() {

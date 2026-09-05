@@ -1194,7 +1194,7 @@ const routen = {
         if (!inhalt) return Response.json({ fehler: "Bitte eine Nachricht eingeben." }, { status: 400 });
         const n = await chat.senden(ich, raum, inhalt);
         // Erst die Skill-Flows: Start eines Flows oder Antwort auf eine Rückfrage. Sonst antwortet die KI.
-        const uebernommen = await skills.verarbeite(ich, raum, inhalt).catch((e) => { console.error("Skill-Fehler:", e); return false; });
+        const uebernommen = await skills.handleChat(ich, raum, inhalt).catch((e) => { console.error("Skill-Fehler:", e); return false; });
         if (!uebernommen) ki.antworte(raum); // läuft im Hintergrund, Antwort kommt gestreamt über den WebSocket
         return Response.json(n, { status: 201 });
       }),
@@ -1209,12 +1209,12 @@ const routen = {
     },
 
     // ---- Skill-Flows: Katalog, Läufe, manueller Start, Abbruch ----
-    "/api/skills": nurTeam(async () => Response.json(skills.katalog())),
+    "/api/skills": nurTeam(async () => Response.json(skills.catalog())),
     "/api/skills/laeufe": nurTeam(async (req, ich) =>
-      Response.json(await skills.laeufe(ich, hatCap(ich, "team.admin"), new URL(req.url).searchParams.get("flow")))),
+      Response.json(await skills.runs(ich, hatCap(ich, "team.admin"), new URL(req.url).searchParams.get("flow")))),
     "/api/skills/laeufe/:id": {
       DELETE: nurTeam(async (req, ich) =>
-        (await skills.abbrechen(req.params.id, ich, hatCap(ich, "team.admin")))
+        (await skills.cancel(req.params.id, ich, hatCap(ich, "team.admin")))
           ? new Response(null, { status: 204 })
           : Response.json({ fehler: "nicht gefunden" }, { status: 404 })),
     },
@@ -1222,13 +1222,13 @@ const routen = {
       POST: nurTeam(async (req, ich) => {
         const flow = skills.FLOWS.find((f) => f.id === req.params.id);
         if (!flow) return Response.json({ fehler: "Flow nicht gefunden" }, { status: 404 });
-        if (flow.system || flow.baustein) return Response.json({ fehler: "Dieser Flow wird nicht direkt gestartet." }, { status: 400 });
+        if (flow.system || flow.component) return Response.json({ fehler: "Dieser Flow wird nicht direkt gestartet." }, { status: 400 });
         const b = await req.json().catch(() => ({}));
-        const startText = text(b?.text, 500) || flow.beispiele[0] || flow.name;
+        const startText = text(b?.text, 500) || flow.examples[0] || flow.name;
         // Der Flow läuft im Chat: Mitarbeiter im eigenen Direkt-Chat, Chat-Admins (sehen ihren eigenen nicht) im Team-Raum.
         const raum = b?.raum === chat.TEAM_RAUM || hatCap(ich, "chat.admin") ? chat.TEAM_RAUM : chat.dmRaum(ich.id);
         await chat.senden(ich, raum, startText);
-        const id = await skills.starte(flow, ich, raum, startText);
+        const id = await skills.start(flow, ich, raum, startText);
         return Response.json({ id, raum }, { status: 201 });
       }),
     },
