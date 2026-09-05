@@ -630,7 +630,7 @@ function aktiviere(v){
   if(v==="reservierungen") loadRes();
   if(v==="meine-schichten") loadMs();
   if(v==="meine-zeiten") loadMz();
-  if(v==="chat") loadChat(); else chatStopp();
+  if(v==="chat") loadChat();
   if(v==="karte") loadKarte();
   if(v==="schichtplan") loadSp();
   if(v==="auswertung") loadReport();
@@ -653,7 +653,7 @@ function starte(){
   document.querySelectorAll(".tab").forEach(t=>{ t.style.display=erlaubt.includes(t.dataset.v)?"":"none"; });
   const wunsch=bereichAusPfad();
   aktiviere(erlaubt.includes(wunsch)?wunsch:erlaubt[0]);
-  chatBadge(); if(!chatBadgeTimer) chatBadgeTimer=setInterval(chatBadge,20000);
+  chatBadge(); liveVerbinden();
 }
 // Bereich aus der Adresse: /app/<bereich> (alte #-Anker werden noch verstanden).
 function bereichAusPfad(){ return (location.pathname.split("/")[2]||location.hash.replace("#","")||""); }
@@ -1193,16 +1193,14 @@ $("btnKtGruppe").addEventListener("click",async ()=>{
   loadKarte();
 });
 
-/* ===== VIEW: CHAT (Raum „Team“ + Direkt-Chats; Polling alle 4 s) ===== */
-let chatRaeume=[], chatAktiv=null, chatNachrichten=[], chatLetzteTs=0, chatTimer=null, chatBadgeTimer=null, chatPollN=0, chatScrollErzwingen=false;
+/* ===== VIEW: CHAT (Raum „Team“ + Direkt-Chats; neue Nachrichten kommen live per WebSocket) ===== */
+let chatRaeume=[], chatAktiv=null, chatNachrichten=[], chatLetzteTs=0, chatScrollErzwingen=false;
 
 async function loadChat(){
   await chatLadeRaeume();
   // Am Desktop direkt den ersten Raum (Team) öffnen; am Handy erst die Liste zeigen.
   if(!chatAktiv && chatRaeume.length && window.innerWidth>880) await chatOeffne(chatRaeume[0].id);
-  chatStopp(); chatTimer=setInterval(chatPoll,4000);
 }
-function chatStopp(){ if(chatTimer){ clearInterval(chatTimer); chatTimer=null; } }
 
 async function chatLadeRaeume(){
   const r=await fetch("/api/chat/raeume"); if(!r.ok) return;
@@ -1275,13 +1273,7 @@ async function chatSenden(){
     chatLadeRaeume();
   }finally{ $("chatSendenBtn").disabled=false; ta.focus(); }
 }
-async function chatPoll(){
-  if(!$("v-chat").classList.contains("active")){ chatStopp(); return; }
-  chatPollN++;
-  await chatHole(chatPollN%10===0); // alle 40 s einmal komplett (fängt Löschungen anderer ein)
-  chatLadeRaeume();
-}
-// Ungelesen-Zähler am Tab – läuft auch außerhalb des Chat-Bereichs (alle 20 s).
+// Ungelesen-Zähler am Tab – einmal beim Start geholt, danach nur über Live-Ereignisse.
 function chatBadgeSetzen(n){ const b=$("chatTabBadge"); if(!b) return; b.textContent=n>99?"99+":String(n); b.style.display=n>0?"":"none"; }
 async function chatBadge(){ try{ const d=await fetch("/api/chat/ungelesen").then(r=>r.ok?r.json():null); if(d) chatBadgeSetzen(d.ungelesen); }catch(e){} }
 
@@ -1296,6 +1288,55 @@ $("chatVerlauf").addEventListener("click",async e=>{
   const r=await fetch("/api/chat/nachricht/"+b.dataset.del,{method:"DELETE"});
   if(r.ok){ chatNachrichten=chatNachrichten.filter(n=>n.id!==b.dataset.del); renderChatVerlauf(); chatLadeRaeume(); }
 });
+
+/* ===== LIVE: WebSocket – der Server pusht, kein Polling ===== */
+let liveWs=null, liveWarte=1000, liveWarVerbunden=false;
+function liveVerbinden(){
+  if(liveWs&&(liveWs.readyState===0||liveWs.readyState===1)) return;
+  const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  liveWs=ws;
+  ws.onopen=()=>{ if(liveWarVerbunden) liveNachziehen(); liveWarVerbunden=true; liveWarte=1000; };
+  ws.onmessage=e=>{ let d; try{ d=JSON.parse(e.data); }catch(x){ return; } liveEreignis(d); };
+  ws.onclose=()=>{ liveWs=null; if(!ME) return; setTimeout(liveVerbinden,liveWarte); liveWarte=Math.min(liveWarte*2,30000); };
+  ws.onerror=()=>{ try{ ws.close(); }catch(x){} };
+}
+function liveSenden(obj){ if(liveWs&&liveWs.readyState===1) liveWs.send(JSON.stringify(obj)); }
+// Nach einer Unterbrechung: Stand nachziehen, was in der Pause passiert ist.
+function liveNachziehen(){ if(activeView) aktualisiereView(activeView); if(chatAktiv&&activeView==="chat") chatHole(true); if(chatRaeume.length) chatLadeRaeume(); else chatBadge(); }
+const VIEW_LADER={heute:()=>loadHeute(),reservierungen:()=>loadRes(),"meine-schichten":()=>loadMs(),"meine-zeiten":()=>loadMz(),
+  schichtplan:()=>loadSp(),auswertung:()=>loadReport(),ablaeufe:()=>loadAblaeufe(),team:()=>loadTeam(),rollen:()=>ladeRollen(),karte:()=>loadKarte()};
+function aktualisiereView(v){ const f=VIEW_LADER[v]; if(f) f(); }
+function liveEreignis(d){
+  switch(d.typ){
+    case "chat.nachricht": return chatEingang(d);
+    case "chat.geloescht": return chatGeloescht(d);
+    case "reservierungen": if(activeView==="reservierungen"||activeView==="heute") aktualisiereView(activeView); return;
+    case "zeiten": if(["heute","meine-zeiten","auswertung"].includes(activeView)) aktualisiereView(activeView); return;
+    case "schichten": if(["meine-schichten","schichtplan"].includes(activeView)) aktualisiereView(activeView); return;
+    case "ablauf": if(activeView==="ablaeufe") aktualisiereView(activeView); return;
+    case "team": if(["team","rollen","schichtplan"].includes(activeView)) aktualisiereView(activeView); if(activeView==="chat") chatLadeRaeume(); return;
+    case "karte": if(activeView==="karte") aktualisiereView(activeView); return;
+  }
+}
+// Neue Chat-Nachricht: im offenen Raum anhängen (und als gelesen melden), sonst Zähler hochzählen.
+function chatEingang(d){
+  const n=d.nachricht; n.eigene=(n.von===ME.id);
+  const imRaum=(d.raum===chatAktiv && activeView==="chat");
+  if(imRaum){
+    if(!chatNachrichten.some(x=>x.id===n.id)){ chatNachrichten.push(n); chatLetzteTs=Math.max(chatLetzteTs,n.ts); renderChatVerlauf(); }
+    liveSenden({typ:"chat.gelesen",raum:d.raum});
+  }
+  const r=chatRaeume.find(x=>x.id===d.raum);
+  if(r){
+    r.letzte={text:n.text,ts:n.ts,eigene:n.eigene};
+    if(!n.eigene && !imRaum) r.ungelesen=(r.ungelesen||0)+1;
+    renderChatRaeume(); chatBadgeSetzen(chatRaeume.reduce((s,x)=>s+x.ungelesen,0));
+  } else if(!n.eigene){ chatBadge(); }
+}
+function chatGeloescht(d){
+  if(d.raum===chatAktiv){ const vorher=chatNachrichten.length; chatNachrichten=chatNachrichten.filter(n=>n.id!==d.id); if(chatNachrichten.length!==vorher) renderChatVerlauf(); }
+  if(chatRaeume.length) chatLadeRaeume();
+}
 
 /* ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== */
 async function loadMs(){

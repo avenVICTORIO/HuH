@@ -5,9 +5,19 @@
 import { randomUUID } from "node:crypto";
 import { alle, eins, lauf, type Mitarbeiter } from "./db";
 import { hatCap } from "./auth";
+import * as live from "./live";
 
 export const TEAM_RAUM = "team";
 export const dmRaum = (mitarbeiterId: string) => `ma-${mitarbeiterId}`;
+
+/** Wer bekommt Live-Ereignisse eines Raums? Team: alle; Direkt-Chat: die Person + Chat-Admins. */
+const themenFuer = (raum: string) =>
+  raum === TEAM_RAUM ? ["alle"] : [`user:${raum.slice(3)}`, "chat.admin"];
+
+// Client meldet über den WebSocket, dass ein Raum gelesen wurde (kein Polling nötig).
+live.beiNachricht("chat.gelesen", async (d, ws) => {
+  if (typeof d.raum === "string") await alsGelesen(ws.data.id, d.raum, Date.now());
+});
 
 export type Raum = {
   id: string;
@@ -82,11 +92,11 @@ export async function raeumeFuer(ich: Mitarbeiter): Promise<Raum[]> {
   return raeume;
 }
 
-async function alsGelesen(ich: Mitarbeiter, raum: string, ts: number) {
+async function alsGelesen(mitarbeiterId: string, raum: string, ts: number) {
   await lauf(
     `INSERT INTO chat_gelesen (mitarbeiter_id, raum, ts) VALUES (?, ?, ?)
      ON CONFLICT (mitarbeiter_id, raum) DO UPDATE SET ts = GREATEST(chat_gelesen.ts, EXCLUDED.ts)`,
-    ich.id, raum, ts,
+    mitarbeiterId, raum, ts,
   );
 }
 
@@ -101,7 +111,7 @@ export async function nachrichten(ich: Mitarbeiter, raum: string, seit = 0): Pro
   const rows = await alle<Omit<Nachricht, "eigene">>(sql, ...(seit > 0 ? [raum, seit] : [raum]));
   if (seit <= 0) rows.reverse();
   const liste = rows.map((r) => ({ ...r, ts: Number(r.ts), eigene: r.von === ich.id }));
-  if (liste.length) await alsGelesen(ich, raum, liste[liste.length - 1].ts);
+  if (liste.length) await alsGelesen(ich.id, raum, liste[liste.length - 1].ts);
   return liste;
 }
 
@@ -112,16 +122,20 @@ export async function senden(ich: Mitarbeiter, raum: string, text: string): Prom
     "INSERT INTO chat_nachrichten (id, raum, von, text, ts) VALUES (?, ?, ?, ?, ?)",
     n.id, n.raum, n.von, n.text, n.ts,
   );
-  await alsGelesen(ich, raum, n.ts);
-  return { ...n, von_name: anzeigeName(ich), eigene: true };
+  await alsGelesen(ich.id, raum, n.ts);
+  const fertig = { ...n, von_name: anzeigeName(ich) };
+  // Live an alle Beteiligten; „eigene“ bestimmt jeder Client selbst über `von`.
+  for (const t of themenFuer(raum)) live.sende(t, { typ: "chat.nachricht", raum, nachricht: fertig });
+  return { ...fertig, eigene: true };
 }
 
 /** Eigene Nachrichten darf jede Person löschen, chat.admin alle. */
 export async function loeschen(ich: Mitarbeiter, id: string): Promise<boolean> {
-  const n = await eins<{ von: string | null }>("SELECT von FROM chat_nachrichten WHERE id = ?", id);
+  const n = await eins<{ von: string | null; raum: string }>("SELECT von, raum FROM chat_nachrichten WHERE id = ?", id);
   if (!n) return false;
   if (n.von !== ich.id && !hatCap(ich, "chat.admin")) return false;
   await lauf("DELETE FROM chat_nachrichten WHERE id = ?", id);
+  for (const t of themenFuer(n.raum)) live.sende(t, { typ: "chat.geloescht", raum: n.raum, id });
   return true;
 }
 
