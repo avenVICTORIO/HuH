@@ -276,7 +276,14 @@ ${baseCss}
   .sk-badge.component{background:#EEF2EC; color:var(--wald); border:1px solid var(--wald-hell);}
   .sk-lauf.sk-kind{margin:10px 0 0 22px; border-style:dashed;}
   .sk-lauf-akt{margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;}
-  .sk-lauf-kopf .iconbtn{margin-left:0;} a.iconbtn{text-decoration:none; display:inline-block;}
+  .sk-btn{display:inline-flex; align-items:center; background:var(--card); border:1px solid var(--line); color:var(--wald); border-radius:999px; padding:6px 12px; font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:.04em; cursor:pointer; text-decoration:none; line-height:1;}
+  .sk-btn:hover{border-color:var(--wald-hell); background:var(--creme);} .sk-btn.rot{color:var(--rot);} .sk-btn.rot:hover{border-color:#E5C4BB;}
+  .sk-btn.gruen{background:var(--wald); border-color:var(--wald); color:#fff;} .sk-btn.gruen:hover{background:#2C382C;}
+  .sk-kopf-akt{display:flex; gap:8px; align-items:center;}
+  .sk-lauf-kopf{cursor:pointer;} .sk-lauf-kopf .sk-lauf-akt{cursor:default;}
+  .sk-chev{color:var(--grey); font-size:13px; width:14px;}
+  .sk-lauf-zuletzt{margin:6px 0 0 24px; font-size:13px; color:var(--clay); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sk-lauf-body{display:none;} .sk-lauf.offen>.sk-lauf-body{display:block;}
   .sk-logs{margin-top:10px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--creme);}
   .sk-log{display:grid; grid-template-columns:72px 120px 66px 60px minmax(0,1fr) auto; gap:10px; align-items:baseline; padding:8px 12px; border-bottom:1px solid var(--line); font-size:13px;}
   .sk-log:last-child{border-bottom:none;}
@@ -520,7 +527,7 @@ ${chatWidgetCss}
         <div class="sk-main" id="skPanelUeberblick">
           <div class="sk-kopf">
             <div><div class="sk-titel" id="skTitel"></div><div class="sk-besch" id="skBesch"></div></div>
-            <button class="ok" id="skStart">Im Chat starten</button>
+            <div class="sk-kopf-akt"><button class="sk-btn gruen" id="skTrigger" style="display:none" title="Trigger jetzt von Hand auslösen (läuft im Team-Raum)">Jetzt auslösen</button><button class="ok" id="skStart">Im Chat starten</button></div>
           </div>
           <div class="sk-meta" id="skMeta"></div>
           <div class="sk-beispiele" id="skBeispiele"></div>
@@ -1258,7 +1265,7 @@ function liveEreignis(d){
 }
 
 /* ===== VIEW: SKILLS (Katalog rechts, Graph/Läufe als Tabs, live) ===== */
-let SK_FLOWS=[], skAktiv=null, SK_LAEUFE=[], skTab="ueberblick";
+let SK_FLOWS=[], skAktiv=null, SK_LAEUFE=[], skTab="ueberblick"; const skOffen=new Set(); // aufgeklappte Läufe
 async function loadSkills(){
   SK_FLOWS=await fetch("/api/skills").then(x=>x.json());
   if(!skAktiv||!SK_FLOWS.some(f=>f.id===skAktiv)) skAktiv=(SK_FLOWS.find(f=>!f.system&&!f.component)||SK_FLOWS[0]||{}).id||null;
@@ -1274,12 +1281,14 @@ function renderSkills(){
   m.style.display="";
   $("skTitel").innerHTML=esc(f.name)+skBadge(f); $("skBesch").textContent=f.description;
   $("skStart").style.display=(f.system||f.component)?"none":"";
+  $("skTrigger").style.display=((f.triggers||[]).length&&cap("team.admin"))?"":"none";
   const nKi=f.actors.filter(a=>a.kind==="ai").length, refs=(f.refs||[]);
   $("skMeta").innerHTML=[
     '<span><b>'+f.actors.length+'</b> Actor'+(f.actors.length===1?"":"s")+'</span>',
     '<span><b>'+nKi+'</b>× KI · <b>'+(f.actors.length-nKi)+'</b>× Code</span>',
     '<span>Start: <b>'+esc((f.actors.find(a=>a.id===f.start)||{}).name||f.start)+'</b></span>',
     refs.length?'<span>'+refs.map(r=>esc(r.via)+': <b>'+esc(r.name)+'</b>').join(" · ")+'</span>':'',
+    (f.triggers||[]).length?'<span>Trigger: '+f.triggers.map(t=>'<b>'+esc(t.label)+'</b>'+(t.room?' → '+esc(t.room):'')).join(" · ")+'</span>':'',
     (f.input||f.output)?'<span>Vertrag: '+(f.input?'in':'')+(f.input&&f.output?' + ':'')+(f.output?'out':'')+'</span>':'',
     '<span>id: <b>'+esc(f.id)+'</b></span>',
   ].join("");
@@ -1334,11 +1343,15 @@ function skLaufKarte(l,kinder,tiefe){
       '<span class="sk-log-kind">'+s.kind+'</span><span class="sk-log-ms">'+Math.round(s.ms)+' ms</span><span class="sk-log-text">'+esc(skLogText(s.output))+'</span>'+
       '<details class="sk-log-raw"><summary>JSON</summary><pre>'+esc(JSON.stringify({input:s.input,output:s.output},null,1))+'</pre></details></div>'; }).join("");
   const kids=(kinder.get(l.id)||[]).map(k=>skLaufKarte(k,kinder,tiefe+1)).join("");
-  return '<div class="card sk-lauf'+(tiefe?" sk-kind":"")+'" data-lauf="'+l.id+'"><div class="sk-lauf-kopf"><b>'+(tiefe?'↳ ':'')+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
-    '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.createdAt).toISOString().slice(0,10))+' '+hm(l.createdAt)+' · '+l.steps.length+' Schritte</small>'+
-    '<span class="sk-lauf-akt">'+(tiefe?'':'<a class="iconbtn" href="/api/skills/laeufe/'+l.id+'/export" download title="Vollständiges Log als JSON (Lauf, Schritte mit Ein-/Ausgabe, Flow, Chat-Kontext)">Log exportieren</a><button class="iconbtn" data-skcopy="'+l.id+'">Kopieren</button>')+
-      (aktiv?'<button class="iconbtn del" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</span></div>'+
-    '<div class="sk-logs">'+(zeilen||'<div class="empty" style="padding:6px">Noch keine Schritte</div>')+'</div>'+kids+'</div>';
+  const offen=skOffen.has(l.id);
+  const letzte=l.steps.length?skLogText(l.steps[l.steps.length-1].output):"";
+  return '<div class="card sk-lauf'+(tiefe?" sk-kind":"")+(offen?" offen":"")+'" data-lauf="'+l.id+'">'+
+    '<div class="sk-lauf-kopf" data-sktoggle="'+l.id+'"><span class="sk-chev">'+(offen?"▾":"▸")+'</span><b>'+(tiefe?'↳ ':'')+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
+      '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.createdAt).toISOString().slice(0,10))+' '+hm(l.createdAt)+' · '+l.steps.length+' Schritte</small>'+
+      '<span class="sk-lauf-akt">'+(tiefe?'':'<a class="sk-btn" href="/api/skills/laeufe/'+l.id+'/export" download title="Vollständiges Log als JSON (Lauf, Schritte mit Ein-/Ausgabe, Flow, Chat-Kontext)">Log exportieren</a><button class="sk-btn" data-skcopy="'+l.id+'">Kopieren</button>')+
+        (aktiv?'<button class="sk-btn rot" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</span></div>'+
+    (offen?'':(letzte?'<div class="sk-lauf-zuletzt">'+esc(letzte)+'</div>':''))+
+    '<div class="sk-lauf-body"><div class="sk-logs">'+(zeilen||'<div class="empty" style="padding:6px">Noch keine Schritte</div>')+'</div>'+kids+'</div></div>';
 }
 // Aktuellen Actor des jüngsten aktiven Laufs im Canvas hervorheben.
 function skMarkiere(){
@@ -1349,6 +1362,9 @@ function skMarkiere(){
 $("skListe").addEventListener("click",e=>{ const b=e.target.closest("[data-sk]"); if(b){ skAktiv=b.dataset.sk; renderSkills(); loadSkLaeufe(); } });
 $("skTabs").addEventListener("click",e=>{ const t=e.target.closest("[data-sktab]"); if(t){ skTab=t.dataset.sktab; skTabZeigen(); if(skTab==="ueberblick") skMarkiere(); } });
 $("skMain").addEventListener("click",async e=>{
+  if(e.target.id==="skTrigger"){ const f=SK_FLOWS.find(x=>x.id===skAktiv); if(!f) return;
+    const r=await fetch("/api/skills/"+encodeURIComponent(f.id)+"/trigger",{method:"POST"}); if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+    skTab="laeufe"; skTabZeigen(); loadSkLaeufe(); return; }
   const bsp=e.target.closest("[data-skbsp]");
   if(!bsp&&e.target.id!=="skStart") return;
   const f=SK_FLOWS.find(x=>x.id===skAktiv); if(!f) return;
@@ -1359,6 +1375,8 @@ $("skMain").addEventListener("click",async e=>{
 });
 $("skLaeufe").addEventListener("click",async e=>{
   const ab=e.target.closest("[data-skabbruch]"); if(ab){ await fetch("/api/skills/laeufe/"+ab.dataset.skabbruch,{method:"DELETE"}); loadSkLaeufe(); return; }
+  if(e.target.closest("a,button,details,summary")){ /* Buttons unten */ }
+  else { const t=e.target.closest("[data-sktoggle]"); if(t){ const id=t.dataset.sktoggle; skOffen.has(id)?skOffen.delete(id):skOffen.add(id); renderSkLaeufe(); return; } }
   const cp=e.target.closest("[data-skcopy]"); if(cp){
     const j=await fetch("/api/skills/laeufe/"+cp.dataset.skcopy+"/export").then(r=>r.text());
     try{ await navigator.clipboard.writeText(j); cp.textContent="Kopiert ✓"; }catch(x){ alert("Kopieren nicht möglich – bitte „Log exportieren“ nutzen."); }
