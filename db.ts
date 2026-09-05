@@ -425,6 +425,29 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       DELETE FROM einstellungen WHERE k IN ('karte_gerichte_backfill', 'karte_kueche_seed', 'rezepte_details');
     `,
   },
+  {
+    // Team-Chat. Räume sind virtuell ('team' bzw. 'ma-<mitarbeiter_id>'), es gibt
+    // keine Raumtabelle – jeder Mitarbeiter hat automatisch seinen Direkt-Chat.
+    id: "018-chat",
+    sql: /* sql */ `
+      CREATE TABLE chat_nachrichten (
+        id   TEXT PRIMARY KEY,
+        raum TEXT NOT NULL,
+        von  TEXT REFERENCES mitarbeiter(id) ON DELETE SET NULL,
+        text TEXT NOT NULL,
+        ts   DOUBLE PRECISION NOT NULL
+      );
+      CREATE INDEX ix_chat_raum_ts ON chat_nachrichten(raum, ts);
+
+      -- Lesestand je Person und Raum (für Ungelesen-Zähler).
+      CREATE TABLE chat_gelesen (
+        mitarbeiter_id TEXT NOT NULL REFERENCES mitarbeiter(id) ON DELETE CASCADE,
+        raum           TEXT NOT NULL,
+        ts             DOUBLE PRECISION NOT NULL,
+        PRIMARY KEY (mitarbeiter_id, raum)
+      );
+    `,
+  },
 ];
 
 async function migrieren() {

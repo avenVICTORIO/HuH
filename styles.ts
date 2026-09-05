@@ -42,6 +42,8 @@ export const teamIcons: Record<string, string> = {
     <path d="M20 10c-3-2.4-7-3-12-2v22c5-1 9-.4 12 2 3-2.4 7-3 12-2V8c-5-1-9-.4-12 2Z"/><path d="M20 10v22"/></svg>`,
   anleitungen: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="20" cy="20" r="12"/><path d="M16.5 16.5a3.5 3.5 0 0 1 6.8 1c0 2.3-3.3 2.8-3.3 5"/><path d="M20 26.5h.01"/></svg>`,
+  chat: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 10a3 3 0 0 1 3-3h20a3 3 0 0 1 3 3v13a3 3 0 0 1-3 3H18l-7 6v-6h-1a3 3 0 0 1-3-3V10Z"/><path d="M14 15h12M14 20h8"/></svg>`,
   reservierung: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <rect x="7" y="9" width="26" height="24" rx="4"/><path d="M7 16h26M14 6v6M26 6v6"/><path d="M14 23l3.5 3.5L26 20"/></svg>`,
   zeiten: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">

@@ -18,6 +18,7 @@ import {
 import { nichtGefundenPage } from "./site/fehler";
 import * as res from "./reservierungen";
 import * as ablauf from "./ablaeufe";
+import * as chat from "./chat";
 import { OEFFNUNG } from "./site/info";
 import {
   CAPABILITIES,
@@ -55,7 +56,7 @@ const nurTeamAdmin = mitCap("team.admin");
 
 /** Bereiche des Team-Bereichs – jeder unter /app/<bereich> erreichbar (Tabs in dashboard.ts). */
 const APP_BEREICHE = new Set([
-  "heute", "reservierungen", "meine-schichten", "meine-zeiten", "karte",
+  "heute", "reservierungen", "meine-schichten", "meine-zeiten", "chat", "karte",
   "schichtplan", "auswertung", "ablaeufe", "team",
 ]);
 
@@ -1164,6 +1165,39 @@ const server = Bun.serve({
         }
         karteInvalidieren();
         return Response.json({ ok: true });
+      }),
+    },
+
+    // ---- Team-Chat: Raum „Team“ für alle + automatisch ein Direkt-Chat je Mitarbeiter ----
+    "/api/chat/raeume": nurTeam(async (_req, ich) => Response.json(await chat.raeumeFuer(ich))),
+    "/api/chat/ungelesen": nurTeam(async (_req, ich) =>
+      Response.json({ ungelesen: await chat.ungelesenGesamt(ich) })),
+    "/api/chat/raum/:raum": {
+      GET: nurTeam(async (req, ich) => {
+        const raum = req.params.raum;
+        if (!(await chat.darfRaum(ich, raum))) {
+          return Response.json({ fehler: "Kein Zugriff auf diesen Chat." }, { status: 403 });
+        }
+        const seit = Number(new URL(req.url).searchParams.get("seit") ?? 0) || 0;
+        return Response.json({ raum, nachrichten: await chat.nachrichten(ich, raum, seit) });
+      }),
+      POST: nurTeam(async (req, ich) => {
+        const raum = req.params.raum;
+        if (!(await chat.darfRaum(ich, raum))) {
+          return Response.json({ fehler: "Kein Zugriff auf diesen Chat." }, { status: 403 });
+        }
+        const b = await req.json().catch(() => null);
+        const inhalt = text(b?.text, 2000);
+        if (!inhalt) return Response.json({ fehler: "Bitte eine Nachricht eingeben." }, { status: 400 });
+        return Response.json(await chat.senden(ich, raum, inhalt), { status: 201 });
+      }),
+    },
+    "/api/chat/nachricht/:id": {
+      DELETE: nurTeam(async (req, ich) => {
+        if (!(await chat.loeschen(ich, req.params.id))) {
+          return Response.json({ fehler: "Nicht gefunden oder nicht erlaubt." }, { status: 404 });
+        }
+        return new Response(null, { status: 204 });
       }),
     },
 

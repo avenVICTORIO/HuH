@@ -84,6 +84,9 @@ ${baseCss}
   .tiles{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
   .tile{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px 16px; text-align:center; cursor:pointer; transition:transform .06s;}
   .tile:active{transform:scale(.97);}
+  .tile{position:relative;}
+  .tile-badge{position:absolute; top:10px; right:10px; min-width:22px; padding:2px 7px; border-radius:999px;
+    background:var(--amber); color:#fff; font-size:12px; font-weight:700; text-align:center; font-family:var(--sans);}
   .tile .ico{display:block; width:34px; height:34px; margin:0 auto 10px; color:var(--amber);}
   .tile .ico svg{width:100%; height:100%;}
   .tile .t{font-family:var(--serif); font-size:19px; color:var(--wald);}
@@ -259,6 +262,7 @@ ${baseCss}
     <template id="tplWerkzeuge">
       <a class="tile werkzeug" href="/app/meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
       <a class="tile werkzeug" href="/app/meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+      <a class="tile werkzeug" href="/app/chat" data-cap="" data-tile="chat"><span class="ico">${teamIcons.chat}</span><span class="t">Chat</span></a>
       <a class="tile werkzeug" href="/app/reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
       <a class="tile werkzeug" href="/app/heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
       <a class="tile werkzeug" href="/app/schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
@@ -496,6 +500,16 @@ function renderHome(){
   updateDuration();
   ladeAblaufHome();
   ladeReservierungenHeute();
+  ladeChatBadge();
+}
+/* Ungelesene Chat-Nachrichten als Zähler auf der Chat-Kachel. */
+async function ladeChatBadge(){
+  const tile=document.querySelector('[data-tile="chat"]'); if(!tile) return;
+  try{
+    const d=await fetch("/api/chat/ungelesen").then(r=>r.ok?r.json():null);
+    const alt=tile.querySelector(".tile-badge"); if(alt) alt.remove();
+    if(d&&d.ungelesen>0){ const b=document.createElement("span"); b.className="tile-badge"; b.textContent=d.ungelesen>99?"99+":String(d.ungelesen); tile.appendChild(b); }
+  }catch(e){}
 }
 function updateDuration(){
   if(!current||!current.clockedIn) return;
