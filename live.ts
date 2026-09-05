@@ -56,6 +56,7 @@ const THEMEN: [RegExp, string][] = [
   [/^\/api\/ablauf/, "ablauf"],
   [/^\/api\/(mitarbeiter|rollen)/, "team"],
   [/^\/api\/karte/, "karte"],
+  [/^\/api\/skills/, "skills"],
 ];
 const SCHREIBEND = ["POST", "PUT", "PATCH", "DELETE"] as const;
 type Handler = (req: Request, srv: unknown) => Response | Promise<Response>;

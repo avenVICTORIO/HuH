@@ -455,6 +455,37 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       ALTER TABLE chat_nachrichten ADD COLUMN ki INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    // Skill-Flows: Läufe (ein Lauf = ein gestarteter Flow einer Person in einem Chat-Raum)
+    // und ihre Schritte (jede Actor-Verarbeitung mit Ein-/Ausgabe).
+    id: "020-skills",
+    sql: /* sql */ `
+      CREATE TABLE skill_laeufe (
+        id              TEXT PRIMARY KEY,
+        flow            TEXT NOT NULL,
+        mitarbeiter_id  TEXT NOT NULL REFERENCES mitarbeiter(id) ON DELETE CASCADE,
+        raum            TEXT NOT NULL,
+        status          TEXT NOT NULL CHECK (status IN ('laeuft','wartet','fertig','abgebrochen','fehler')),
+        aktueller_actor TEXT,
+        zustand         TEXT NOT NULL DEFAULT '{}',
+        erstellt        DOUBLE PRECISION NOT NULL,
+        aktualisiert    DOUBLE PRECISION NOT NULL
+      );
+      CREATE INDEX ix_skill_laeufe_person ON skill_laeufe(mitarbeiter_id, raum, status);
+
+      CREATE TABLE skill_schritte (
+        id       TEXT PRIMARY KEY,
+        lauf_id  TEXT NOT NULL REFERENCES skill_laeufe(id) ON DELETE CASCADE,
+        actor    TEXT NOT NULL,
+        art      TEXT NOT NULL,
+        eingabe  TEXT,
+        ausgabe  TEXT,
+        dauer_ms DOUBLE PRECISION,
+        ts       DOUBLE PRECISION NOT NULL
+      );
+      CREATE INDEX ix_skill_schritte_lauf ON skill_schritte(lauf_id, ts);
+    `,
+  },
 ];
 
 async function migrieren() {

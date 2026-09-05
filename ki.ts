@@ -14,6 +14,30 @@ const KEY = process.env.PHALA_API_KEY;
 export const aktiv = !!KEY;
 console.log(aktiv ? `🤖 KI im Chat an – ${MODELL} über ${BASIS}` : "🤖 KI im Chat aus – PHALA_API_KEY fehlt (.env)");
 
+/** Einmaliger, nicht gestreamter Aufruf – für Skill-Actors. */
+export async function kiText(system: string, user: string, opt: { json?: boolean } = {}): Promise<string> {
+  if (!aktiv) throw new Error("KI nicht konfiguriert (PHALA_API_KEY fehlt)");
+  const res = await fetch(`${BASIS}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODELL, temperature: 0.2, max_tokens: 500, reasoning: { enabled: false },
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      ...(opt.json ? { response_format: { type: "json_object" } } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`KI HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const j = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  return j.choices?.[0]?.message?.content ?? "";
+}
+
+/** JSON-Antwort (tolerant: nimmt das erste {...} aus dem Text). */
+export async function kiJson<T = Record<string, unknown>>(system: string, user: string): Promise<T> {
+  const t = await kiText(system, user, { json: true });
+  const m = t.match(/\{[\s\S]*\}/);
+  return JSON.parse(m ? m[0] : t) as T;
+}
+
 const STUMM = "[stumm]";
 const KONTEXT = 30; // so viele letzte Nachrichten sieht das Modell
 

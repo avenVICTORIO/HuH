@@ -237,6 +237,7 @@ ${chatWidgetCss}
     <template id="tplWerkzeuge">
       <a class="tile werkzeug" href="/app/meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
       <a class="tile werkzeug" href="/app/meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+      <a class="tile werkzeug" href="/app/skills" data-cap=""><span class="ico">${teamIcons.anleitungen}</span><span class="t">Skills</span></a>
       <a class="tile werkzeug" href="/app/reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
       <a class="tile werkzeug" href="/app/heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
       <a class="tile werkzeug" href="/app/schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
