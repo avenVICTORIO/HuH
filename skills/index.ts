@@ -1,239 +1,319 @@
-// Runtime für Skill-Flows: Registry, Chat-Eingang, Inbox-Zustellung, Komposition, Persistenz.
+// Skill-flow runtime: registry, chat entry point, inbox delivery, composition,
+// persistence, and JSON-Schema validation (Ajv) of everything that crosses an
+// actor boundary.
 //
-// Chat-Nachricht kommt an -> verarbeite():
-//   1. Wartet in diesem Raum ein Lauf dieser Person auf eine Antwort? -> Antwort in dessen Inbox.
-//   2. Sonst bekommt der System-Flow „router“ die Nachricht. Sein KI-Actor entscheidet,
-//      ob er an einen Flow übergibt (Ergebnis `starte`). Übergibt er nicht, antwortet die KI normal.
-// Komposition: Ein Actor kann mit `rufe` einen anderen Flow als Sub-Flow starten; der
-// Eltern-Lauf wartet (Status „kind“), und wenn der Kind-Lauf endet, landet sein Ergebnis
-// als Post „rueckkehr“ im benannten Actor des Eltern-Laufs. Beliebig tief schachtelbar.
+// A chat message arrives -> handleChat():
+//   1. Is a run of this person waiting for an answer in this room? -> answer goes to its inbox.
+//   2. Otherwise the system flow "router" receives the message. Its AI actor decides
+//      whether to hand off to a flow (Result `handoff`). If not, the assistant replies normally.
+// Composition: an actor may `call` another flow as a sub-flow; the parent waits (status
+// "child") and, when the child ends, its result returns as Message `return` to the
+// parent's actor named in `then`. Arbitrarily nestable. `handoff` delegates without return.
 import { randomUUID } from "node:crypto";
+import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
 import { alle, eins, lauf, type Mitarbeiter } from "../db";
 import * as chat from "../chat";
 import * as live from "../live";
 import * as ki from "../ki";
 import { alsDatum } from "../reservierungen";
-import type { Actor, Ergebnis, Flow, FlowInfo, Kontext, LaufStatus, Post, Zustand } from "./typen";
+import {
+  RESULT_SCHEMA, type Actor, type Context, type Flow, type FlowInfo, type Message, type Result,
+  type RunStatus, type Schema, type State,
+} from "./types";
 
 import router from "./router/flow";
-import bestaetigung from "./bestaetigung/flow";
-import zeitenEintragen from "./zeiten-eintragen/flow";
+import confirm from "./confirm/flow";
+import logTime from "./log-time/flow";
 
-/** Alle Flows – jeder Ordner registriert sich hier. */
-export const FLOWS: Flow[] = [router, bestaetigung, zeitenEintragen];
+/** Every flow folder registers here. */
+export const FLOWS: Flow[] = [router, confirm, logTime];
 export const ROUTER_ID = router.id;
 
-const flowVon = (id: string) => FLOWS.find((f) => f.id === id);
-const actorVon = (f: Flow, id: string) => f.actors.find((a) => a.id === id);
+const flowById = (id: string) => FLOWS.find((f) => f.id === id);
+const actorOf = (f: Flow, id: string) => f.actors.find((a) => a.id === id);
 const MAX_HOPS = 20;
-/** Flows, die der Router starten darf (keine System-Flows, keine Bausteine). */
-const startbare = (): FlowInfo[] =>
-  FLOWS.filter((f) => !f.system && !f.baustein).map(({ id, name, beschreibung, beispiele }) => ({ id, name, beschreibung, beispiele }));
+/** Flows the router may start (no system flows, no components). */
+const startable = (): FlowInfo[] =>
+  FLOWS.filter((f) => !f.system && !f.component).map(({ id, name, description, examples }) => ({ id, name, description, examples }));
 
-export type Lauf = {
-  id: string; flow: string; mitarbeiter_id: string; raum: string; status: LaufStatus;
+// ------------------------------------------------------------------ JSON Schema (Ajv)
+
+const ajv = new Ajv({ allErrors: true, strict: false, useDefaults: true });
+addFormats(ajv);
+const compiled = new WeakMap<object, ValidateFunction>();
+function validatorFor(schema: Schema): ValidateFunction {
+  let v = compiled.get(schema);
+  if (!v) { v = ajv.compile(schema); compiled.set(schema, v); }
+  return v;
+}
+/** Returns null when valid, otherwise a readable error text. */
+export function validate(schema: Schema | undefined, data: unknown, what: string): string | null {
+  if (!schema) return null;
+  const v = validatorFor(schema);
+  return v(data) ? null : `${what}: ${ajv.errorsText(v.errors, { separator: "; " })}`;
+}
+const resultValid = validatorFor(RESULT_SCHEMA);
+
+// Registry lint at startup: broken references surface immediately in the server log.
+for (const f of FLOWS) {
+  const ids = new Set([...f.actors.map((a) => a.id), ...(f.refs ?? []).map((r) => "flow:" + r.flow)]);
+  if (!actorOf(f, f.start)) console.error(`Skill „${f.id}“: start actor „${f.start}“ missing`);
+  for (const e of f.edges) if (!ids.has(e.from) || !ids.has(e.to)) console.error(`Skill „${f.id}“: edge ${e.from} -> ${e.to} points nowhere`);
+  for (const r of f.refs ?? []) if (!flowById(r.flow)) console.error(`Skill „${f.id}“: ref to unknown flow „${r.flow}“`);
+  for (const s of [f.input, f.output, ...f.actors.flatMap((a) => [a.input, a.output])]) if (s) validatorFor(s); // compile = schema check
+}
+
+// ------------------------------------------------------------------ Types
+
+export type Run = {
+  id: string; flow: string; mitarbeiter_id: string; raum: string; status: RunStatus;
   aktueller_actor: string | null; zustand: string; erstellt: number; aktualisiert: number;
   eltern_id: string | null; rueckkehr_actor: string | null;
 };
+type Outcome = { status: RunStatus; handedOff?: string };
 
-type Ausgang = { status: LaufStatus; uebergeben?: string };
+// ------------------------------------------------------------------ Chat entry
 
-// ------------------------------------------------------------------ Chat-Eingang
-
-/** true, wenn ein Flow die Nachricht übernommen hat (Antwort auf Rückfrage oder Start). */
-export async function verarbeite(person: Mitarbeiter, raum: string, text: string): Promise<boolean> {
-  const wartend = await eins<Lauf>(
-    "SELECT * FROM skill_laeufe WHERE mitarbeiter_id = ? AND raum = ? AND status = 'wartet' ORDER BY aktualisiert DESC LIMIT 1",
-    person.id, raum,
+/** true when a flow took the message (answer to a pending question, or a start via the router). */
+export async function handleChat(person: Mitarbeiter, room: string, text: string): Promise<boolean> {
+  const waiting = await eins<Run>(
+    "SELECT * FROM skill_laeufe WHERE mitarbeiter_id = ? AND raum = ? AND status = 'waiting' ORDER BY aktualisiert DESC LIMIT 1",
+    person.id, room,
   );
-  if (wartend) {
-    void zustelle(wartend.id, wartend.aktueller_actor!, { art: "antwort", text });
+  if (waiting) {
+    void deliver(waiting.id, waiting.aktueller_actor!, { kind: "answer", text });
     return true;
   }
-  // Der Router ist selbst ein Flow: sein Lauf wird abgewartet, damit klar ist, ob übergeben wurde.
-  const r = flowVon(ROUTER_ID);
+  const r = flowById(ROUTER_ID);
   if (!r) return false;
-  const id = await neuerLauf(r, person, raum, {});
-  const ausgang = await zustelle(id, r.start, { art: "start", text });
-  return !!ausgang?.uebergeben;
+  const id = await newRun(r, person, room, {});
+  const out = await deliver(id, r.start, { kind: "start", text }); // awaited: we need to know whether it handed off
+  return !!out?.handedOff;
 }
 
-/** Lauf manuell starten (Skills-Seite). Läuft im Hintergrund. */
-export async function starte(flow: Flow, person: Mitarbeiter, raum: string, text: string): Promise<string> {
-  const id = await neuerLauf(flow, person, raum, {});
-  void zustelle(id, flow.start, { art: "start", text });
+/** Start a flow manually (Skills page). Runs in the background. */
+export async function start(flow: Flow, person: Mitarbeiter, room: string, text: string): Promise<string> {
+  const id = await newRun(flow, person, room, {});
+  void deliver(id, flow.start, { kind: "start", text });
   return id;
 }
 
-async function neuerLauf(flow: Flow, person: Mitarbeiter, raum: string, zustand: Zustand, eltern?: { id: string; actor: string }): Promise<string> {
-  const id = randomUUID(), jetzt = Date.now();
+async function newRun(flow: Flow, person: Mitarbeiter, room: string, state: State, parent?: { id: string; actor: string }): Promise<string> {
+  const id = randomUUID(), now = Date.now();
   await lauf(
     `INSERT INTO skill_laeufe (id, flow, mitarbeiter_id, raum, status, aktueller_actor, zustand, erstellt, aktualisiert, eltern_id, rueckkehr_actor)
-     VALUES (?, ?, ?, ?, 'laeuft', ?, ?, ?, ?, ?, ?)`,
-    id, flow.id, person.id, raum, flow.start, JSON.stringify(zustand), jetzt, jetzt, eltern?.id ?? null, eltern?.actor ?? null,
+     VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)`,
+    id, flow.id, person.id, room, flow.start, JSON.stringify(state), now, now, parent?.id ?? null, parent?.actor ?? null,
   );
   signal();
   return id;
 }
 
-// ------------------------------------------------------------------ Zustellung
+// ------------------------------------------------------------------ Delivery
 
-/** Post in die Inbox eines Actors legen und den Lauf treiben, bis er wartet, ruft oder endet. */
-async function zustelle(laufId: string, actorId: string, post: Post): Promise<Ausgang | undefined> {
-  const l = await eins<Lauf>("SELECT * FROM skill_laeufe WHERE id = ?", laufId);
-  if (!l) return;
-  const flow = flowVon(l.flow);
-  const person = await eins<Mitarbeiter>("SELECT * FROM mitarbeiter WHERE id = ?", l.mitarbeiter_id);
-  if (!flow || !person) return abschluss(l, "fehler", "Der Ablauf ist nicht mehr verfügbar.", {});
+/** Put a message into an actor's inbox and drive the run until it waits, calls, or ends. */
+async function deliver(runId: string, actorId: string, message: Message): Promise<Outcome | undefined> {
+  const run = await eins<Run>("SELECT * FROM skill_laeufe WHERE id = ?", runId);
+  if (!run) return;
+  const flow = flowById(run.flow);
+  const person = await eins<Mitarbeiter>("SELECT * FROM mitarbeiter WHERE id = ?", run.mitarbeiter_id);
+  if (!flow || !person) return finish(run, "error", "Der Ablauf ist nicht mehr verfügbar.", {}, actorId);
+  const quiet = !!(flow.system || flow.component);
 
-  let zustand: Zustand = {};
-  try { zustand = JSON.parse(l.zustand || "{}"); } catch {}
-  let aktuell: Actor | undefined = actorVon(flow, actorId);
-  let eingang: Post = post;
-  await setze(l.id, "laeuft", actorId, zustand);
+  let state: State = {};
+  try { state = JSON.parse(run.zustand || "{}"); } catch {}
+  let actor: Actor | undefined = actorOf(flow, actorId);
+  let inbox: Message = message;
+  await setStatus(run.id, "running", actorId, state);
 
-  for (let hop = 0; hop < MAX_HOPS && aktuell; hop++) {
-    const k: Kontext = {
-      lauf: { id: l.id, flow: flow.id }, person, raum: l.raum, heute: alsDatum(new Date()),
-      zustand, flows: startbare(), ki: kiZugang(),
+  for (let hop = 0; hop < MAX_HOPS && actor; hop++) {
+    // 1) Input contract: the state must satisfy the actor's input schema.
+    const inErr = validate(actor.input, state, `Eingabe von „${actor.name}“`);
+    if (inErr) {
+      await step(run.id, actor.id, "error", inbox, { error: inErr }, 0);
+      return finish(run, "error", quiet ? "" : `Interner Fehler im Ablauf – ${inErr}`, state, actor.id);
+    }
+    const ctx: Context = {
+      run: { id: run.id, flow: flow.id }, person, room: run.raum, today: alsDatum(new Date()),
+      state, flows: startable(), ai: aiFor(),
     };
     const t0 = Date.now();
-    let erg: Ergebnis;
+    let result: Result;
     try {
-      erg = await aktuell.handle(eingang, k);
+      result = await actor.handle(inbox, ctx);
     } catch (e) {
-      await schritt(l.id, aktuell.id, "fehler", eingang, { fehler: String(e) }, Date.now() - t0);
-      return abschluss(l, "fehler", flow.system ? "" : `Da ist etwas schiefgelaufen (${aktuell.name}). Bitte versuch es später noch einmal.`, zustand);
+      await step(run.id, actor.id, "error", inbox, { error: String(e) }, Date.now() - t0);
+      return finish(run, "error", quiet ? "" : `Da ist etwas schiefgelaufen (${actor.name}). Bitte versuch es später noch einmal.`, state, actor.id);
     }
-    if (erg.zustand) zustand = { ...zustand, ...erg.zustand };
-    await schritt(l.id, aktuell.id, art(erg), eingang, erg, Date.now() - t0);
+    // 2) Result contract.
+    if (!resultValid(result)) {
+      const err = `Ergebnis von „${actor.name}“: ${ajv.errorsText(resultValid.errors, { separator: "; " })}`;
+      await step(run.id, actor.id, "error", inbox, { error: err, result }, Date.now() - t0);
+      return finish(run, "error", quiet ? "" : "Interner Fehler im Ablauf (ungültiges Actor-Ergebnis).", state, actor.id);
+    }
+    // 3) Output contract: the state patch must satisfy the actor's output schema.
+    if (result.state) {
+      const outErr = validate(actor.output, result.state, `Ausgabe von „${actor.name}“`);
+      if (outErr) {
+        await step(run.id, actor.id, "error", inbox, { error: outErr, result }, Date.now() - t0);
+        return finish(run, "error", quiet ? "" : `Interner Fehler im Ablauf – ${outErr}`, state, actor.id);
+      }
+      state = { ...state, ...result.state };
+    }
+    await step(run.id, actor.id, kindOf(result), inbox, result, Date.now() - t0);
 
-    if ("weiter" in erg) {
-      if (erg.sag) await sage(l.raum, flow, erg.sag);
-      const naechster = actorVon(flow, erg.weiter);
-      if (!naechster) return abschluss(l, "fehler", `Actor „${erg.weiter}“ fehlt im Flow.`, zustand);
-      eingang = { art: "weiter", von: aktuell.id };
-      aktuell = naechster;
-      await setze(l.id, "laeuft", aktuell.id, zustand);
+    if ("tell" in result) {
+      if (result.say) await say(run.raum, flow, result.say);
+      const next = actorOf(flow, result.tell);
+      if (!next) return finish(run, "error", `Actor „${result.tell}“ fehlt im Flow.`, state, actor.id);
+      inbox = { kind: "tell", from: actor.id };
+      actor = next;
+      await setStatus(run.id, "running", actor.id, state);
       continue;
     }
-    if ("frage" in erg) {
-      await setze(l.id, "wartet", aktuell.id, zustand);
-      await sage(l.raum, flow, erg.frage);
-      return { status: "wartet" };
+    if ("ask" in result) {
+      await setStatus(run.id, "waiting", actor.id, state);
+      await say(run.raum, flow, result.ask);
+      return { status: "waiting" };
     }
-    if ("starte" in erg) {
-      // Übergabe ohne Rückkehr: dieser Lauf endet still, der Ziel-Flow bekommt die Nachricht als Start.
-      const ziel = flowVon(erg.starte);
-      if (!ziel) return abschluss(l, "fehler", `Flow „${erg.starte}“ nicht gefunden.`, zustand);
-      await setze(l.id, "fertig", aktuell.id, zustand);
-      const kindId = await neuerLauf(ziel, person, l.raum, {});
-      void zustelle(kindId, ziel.start, { art: "start", text: erg.text ?? "" });
-      return { status: "fertig", uebergeben: ziel.id };
+    if ("handoff" in result) {
+      const target = flowById(result.handoff);
+      if (!target) return finish(run, "error", `Flow „${result.handoff}“ nicht gefunden.`, state, actor.id);
+      await setStatus(run.id, "done", actor.id, state);
+      const childId = await newRun(target, person, run.raum, {});
+      void deliver(childId, target.start, { kind: "start", text: result.text ?? "" });
+      return { status: "done", handedOff: target.id };
     }
-    if ("rufe" in erg) {
-      // Sub-Flow mit Rückkehr: Eltern-Lauf wartet (kind), Kind-Lauf startet mit eigener Zustands-Eingabe.
-      const ziel = flowVon(erg.rufe);
-      if (!ziel) return abschluss(l, "fehler", `Flow „${erg.rufe}“ nicht gefunden.`, zustand);
-      if (!actorVon(flow, erg.dann)) return abschluss(l, "fehler", `Rückkehr-Actor „${erg.dann}“ fehlt im Flow.`, zustand);
-      await setze(l.id, "kind", erg.dann, zustand);
-      const kindId = await neuerLauf(ziel, person, l.raum, erg.eingabe ?? {}, { id: l.id, actor: erg.dann });
-      void zustelle(kindId, ziel.start, { art: "start", text: erg.text ?? "" });
-      return { status: "kind" };
+    if ("call" in result) {
+      const target = flowById(result.call);
+      if (!target) return finish(run, "error", `Flow „${result.call}“ nicht gefunden.`, state, actor.id);
+      if (!actorOf(flow, result.then)) return finish(run, "error", `Rückkehr-Actor „${result.then}“ fehlt im Flow.`, state, actor.id);
+      const input = result.input ?? {};
+      const callErr = validate(target.input, input, `Eingabe für Flow „${target.name}“`);
+      if (callErr) {
+        await step(run.id, actor.id, "error", inbox, { error: callErr }, 0);
+        return finish(run, "error", quiet ? "" : `Interner Fehler im Ablauf – ${callErr}`, state, actor.id);
+      }
+      await setStatus(run.id, "child", result.then, state);
+      const childId = await newRun(target, person, run.raum, input, { id: run.id, actor: result.then });
+      void deliver(childId, target.start, { kind: "start", text: result.text ?? "" });
+      return { status: "child" };
     }
-    if ("fertig" in erg) return abschluss(l, "fertig", erg.fertig, zustand);
-    if ("abbruch" in erg) return abschluss(l, "abgebrochen", erg.abbruch, zustand);
+    if ("done" in result) return finish(run, "done", result.done, state, actor.id);
+    if ("cancel" in result) return finish(run, "cancelled", result.cancel, state, actor.id);
   }
-  return abschluss(l, "fehler", "Der Ablauf hat sich verlaufen (zu viele Schritte).", zustand);
+  return finish(run, "error", "Der Ablauf hat sich verlaufen (zu viele Schritte).", state, actorId);
 }
 
-/** Lauf beenden, ggf. Text sagen und – falls es ein Kind ist – an den Eltern-Lauf zurückkehren. */
-async function abschluss(l: Lauf, status: LaufStatus, text: string, zustand: Zustand): Promise<Ausgang> {
-  await setze(l.id, status, l.aktueller_actor, zustand);
-  const flow = flowVon(l.flow);
-  if (text && flow) await sage(l.raum, flow, text);
-  if (l.eltern_id && l.rueckkehr_actor) {
-    void zustelle(l.eltern_id, l.rueckkehr_actor, { art: "rueckkehr", flow: l.flow, status, zustand });
+/** End a run, say the closing text, validate the flow's output contract, and return to the parent if any. */
+async function finish(run: Run, status: RunStatus, text: string, state: State, actorId: string | null): Promise<Outcome> {
+  const flow = flowById(run.flow);
+  const quiet = !!(flow?.system || flow?.component);
+  if (status === "done" && flow?.output) {
+    const err = validate(flow.output, state, `Ergebnis von Flow „${flow.name}“`);
+    if (err) {
+      await step(run.id, actorId ?? "-", "error", null, { error: err }, 0);
+      status = "error"; text = quiet ? "" : `Interner Fehler im Ablauf – ${err}`;
+    }
+  }
+  await setStatus(run.id, status, actorId, state);
+  if (text && flow) await say(run.raum, flow, text);
+  if (run.eltern_id && run.rueckkehr_actor) {
+    void deliver(run.eltern_id, run.rueckkehr_actor, { kind: "return", flow: run.flow, status, state });
   }
   return { status };
 }
 
-const art = (e: Ergebnis) =>
-  "weiter" in e ? "weiter" : "frage" in e ? "frage" : "starte" in e ? "starte" : "rufe" in e ? "rufe" : "fertig" in e ? "fertig" : "abbruch";
+const kindOf = (r: Result) =>
+  "tell" in r ? "tell" : "ask" in r ? "ask" : "handoff" in r ? "handoff" : "call" in r ? "call" : "done" in r ? "done" : "cancel";
 
-async function setze(id: string, status: LaufStatus, actor: string | null, zustand: Zustand) {
+async function setStatus(id: string, status: RunStatus, actor: string | null, state: State) {
   await lauf("UPDATE skill_laeufe SET status = ?, aktueller_actor = ?, zustand = ?, aktualisiert = ? WHERE id = ?",
-    status, actor, JSON.stringify(zustand), Date.now(), id);
+    status, actor, JSON.stringify(state), Date.now(), id);
   signal();
 }
 
-async function schritt(laufId: string, actor: string, art: string, eingabe: unknown, ausgabe: unknown, dauer: number) {
+async function step(runId: string, actor: string, kind: string, input: unknown, output: unknown, ms: number) {
   await lauf(
     "INSERT INTO skill_schritte (id, lauf_id, actor, art, eingabe, ausgabe, dauer_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    randomUUID(), laufId, actor, art, JSON.stringify(eingabe).slice(0, 4000), JSON.stringify(ausgabe).slice(0, 4000), dauer, Date.now(),
+    randomUUID(), runId, actor, kind, JSON.stringify(input ?? null).slice(0, 4000), JSON.stringify(output ?? null).slice(0, 4000), ms, Date.now(),
   );
 }
 
-/** Der Flow spricht im Chat – als KI-Assistenz, mit Flow-Präfix (System-Flows und Bausteine ohne Präfix). */
-async function sage(raum: string, flow: Flow, text: string) {
-  const praefix = flow.system || flow.baustein ? "" : `⚙️ ${flow.name}\n`;
-  await chat.kiNachricht(raum, praefix + text, randomUUID());
+/** The flow speaks in chat as the assistant – with a flow prefix (system flows and components without). */
+async function say(room: string, flow: Flow, text: string) {
+  const prefix = flow.system || flow.component ? "" : `⚙️ ${flow.name}\n`;
+  await chat.kiNachricht(room, prefix + text, randomUUID());
 }
 
 const signal = () => live.sende("alle", { typ: "skills" });
 
-function kiZugang(): Kontext["ki"] {
+function aiFor(): Context["ai"] {
   return {
-    aktiv: ki.aktiv,
-    json: (system, user) => ki.kiJson(system, user),
+    active: ki.aktiv,
     text: (system, user) => ki.kiText(system, user),
+    async json(system, user, schema) {
+      let data = await ki.kiJson(system, user);
+      if (!schema) return data as never;
+      let err = validate(schema, data, "KI-Antwort");
+      if (!err) return data as never;
+      // One retry with the schema and the error spelled out.
+      data = await ki.kiJson(
+        `${system}\n\nDeine letzte Antwort war ungültig (${err}). Antworte exakt nach diesem JSON-Schema: ${JSON.stringify(schema)}`, user);
+      err = validate(schema, data, "KI-Antwort");
+      if (err) throw new Error(err);
+      return data as never;
+    },
   };
 }
 
-// ------------------------------------------------------------------ Für die Skills-Seite
+// ------------------------------------------------------------------ For the Skills page
 
-export function katalog() {
+export function catalog() {
   return FLOWS.map((f) => ({
-    id: f.id, name: f.name, beschreibung: f.beschreibung, beispiele: f.beispiele, start: f.start,
-    system: !!f.system, baustein: !!f.baustein,
-    actors: f.actors.map((a) => ({ id: a.id, name: a.name, art: a.art, beschreibung: a.beschreibung, pos: a.pos })),
-    verweise: (f.verweise ?? []).map((v) => ({ ...v, name: flowVon(v.flow)?.name ?? v.flow })),
-    kanten: f.kanten,
+    id: f.id, name: f.name, description: f.description, examples: f.examples, start: f.start,
+    system: !!f.system, component: !!f.component, input: f.input ?? null, output: f.output ?? null,
+    actors: f.actors.map((a) => ({ id: a.id, name: a.name, kind: a.kind, description: a.description, pos: a.pos, input: a.input ?? null, output: a.output ?? null })),
+    refs: (f.refs ?? []).map((r) => ({ ...r, name: flowById(r.flow)?.name ?? r.flow })),
+    edges: f.edges,
   }));
 }
 
-export async function laeufe(person: Mitarbeiter, alleSehen: boolean, flowId: string | null, limit = 40) {
-  const bed: string[] = [], param: unknown[] = [];
-  if (!alleSehen) { bed.push("l.mitarbeiter_id = ?"); param.push(person.id); }
-  if (flowId) { bed.push("l.flow = ?"); param.push(flowId); }
-  const where = bed.length ? "WHERE " + bed.join(" AND ") : "";
-  const rows = await alle<Lauf & { person: string }>(
+export async function runs(person: Mitarbeiter, seeAll: boolean, flowId: string | null, limit = 40) {
+  const cond: string[] = [], params: unknown[] = [];
+  if (!seeAll) { cond.push("l.mitarbeiter_id = ?"); params.push(person.id); }
+  if (flowId) { cond.push("l.flow = ?"); params.push(flowId); }
+  const where = cond.length ? "WHERE " + cond.join(" AND ") : "";
+  const rows = await alle<Run & { person: string }>(
     `SELECT l.*, COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name) AS person
        FROM skill_laeufe l LEFT JOIN mitarbeiter m ON m.id = l.mitarbeiter_id ${where}
-      ORDER BY l.aktualisiert DESC LIMIT ?`, ...param, limit);
+      ORDER BY l.aktualisiert DESC LIMIT ?`, ...params, limit);
   const ids = rows.map((r) => r.id);
-  const schritte = ids.length
+  const steps = ids.length
     ? await alle<{ lauf_id: string; actor: string; art: string; ausgabe: string; dauer_ms: number; ts: number }>(
         `SELECT lauf_id, actor, art, ausgabe, dauer_ms, ts FROM skill_schritte WHERE lauf_id IN (${ids.map(() => "?").join(",")}) ORDER BY ts ASC`, ...ids)
     : [];
   const parse = (s: string) => { try { return JSON.parse(s); } catch { return s; } };
   return rows.map((r) => ({
-    ...r, erstellt: Number(r.erstellt), aktualisiert: Number(r.aktualisiert), zustand: parse(r.zustand || "{}"),
-    schritte: schritte.filter((s) => s.lauf_id === r.id).map((s) => ({
-      actor: s.actor, art: s.art, dauer_ms: Number(s.dauer_ms), ts: Number(s.ts), ausgabe: parse(s.ausgabe),
+    id: r.id, flow: r.flow, status: r.status, person: r.person, room: r.raum,
+    createdAt: Number(r.erstellt), updatedAt: Number(r.aktualisiert), currentActor: r.aktueller_actor,
+    parentId: r.eltern_id, state: parse(r.zustand || "{}"),
+    steps: steps.filter((s) => s.lauf_id === r.id).map((s) => ({
+      actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), ts: Number(s.ts), output: parse(s.ausgabe),
     })),
   }));
 }
 
-/** Lauf abbrechen – Kinder mit; ein abgebrochenes Kind meldet sich beim Eltern-Lauf zurück. */
-export async function abbrechen(id: string, person: Mitarbeiter, darfAlle: boolean): Promise<boolean> {
-  const l = await eins<Lauf>("SELECT * FROM skill_laeufe WHERE id = ?", id);
-  if (!l || (l.mitarbeiter_id !== person.id && !darfAlle)) return false;
-  const kinder = await alle<Lauf>("SELECT * FROM skill_laeufe WHERE eltern_id = ? AND status IN ('laeuft','wartet','kind')", id);
-  for (const k of kinder) await lauf("UPDATE skill_laeufe SET status = 'abgebrochen', aktualisiert = ? WHERE id = ?", Date.now(), k.id);
-  if (l.status === "laeuft" || l.status === "wartet" || l.status === "kind") {
-    let zustand: Zustand = {}; try { zustand = JSON.parse(l.zustand || "{}"); } catch {}
-    await abschluss(l, "abgebrochen", "Abgebrochen.", zustand);
+/** Cancel a run (children too); a cancelled child reports back to its parent. */
+export async function cancel(id: string, person: Mitarbeiter, mayAll: boolean): Promise<boolean> {
+  const run = await eins<Run>("SELECT * FROM skill_laeufe WHERE id = ?", id);
+  if (!run || (run.mitarbeiter_id !== person.id && !mayAll)) return false;
+  const children = await alle<Run>("SELECT * FROM skill_laeufe WHERE eltern_id = ? AND status IN ('running','waiting','child')", id);
+  for (const c of children) await lauf("UPDATE skill_laeufe SET status = 'cancelled', aktualisiert = ? WHERE id = ?", Date.now(), c.id);
+  if (run.status === "running" || run.status === "waiting" || run.status === "child") {
+    let state: State = {}; try { state = JSON.parse(run.zustand || "{}"); } catch {}
+    await finish(run, "cancelled", "Abgebrochen.", state, run.aktueller_actor);
   }
   return true;
 }
