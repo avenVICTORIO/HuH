@@ -308,8 +308,16 @@ ${baseCss}
   .sk-log.ask .sk-log-kind{color:var(--amber);} .sk-log.error .sk-log-kind{color:var(--rot);} .sk-log.done .sk-log-kind{color:var(--wald);} .sk-log.call .sk-log-kind,.sk-log.handoff .sk-log-kind{color:var(--wald-hell);}
   .sk-log-ms{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; color:var(--grey); text-align:right;}
   .sk-log-text{color:var(--ink); overflow-wrap:anywhere;}
+  .sk-log-details{display:flex; gap:10px; align-items:baseline;}
   .sk-log-raw summary{font-size:11px; color:var(--grey); cursor:pointer; list-style:none;}
-  .sk-log-raw[open]{grid-column:1/-1;}
+  .sk-prompt summary{color:var(--amber); font-weight:600;}
+  .sk-log-details:has(details[open]){grid-column:1/-1; flex-direction:column; align-items:stretch;}
+  .sk-call{margin:6px 0 4px; border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:var(--card);}
+  .sk-call.fehler{border-color:#E5C4BB;}
+  .sk-call-kopf{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--clay); margin-bottom:6px;}
+  .sk-call-l{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--grey); margin:6px 0 2px; cursor:default;}
+  .sk-call pre{margin:0; font-size:11px; white-space:pre-wrap; background:var(--creme); border:1px solid var(--line); border-radius:8px; padding:6px 8px; max-height:260px; overflow:auto; font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .sk-log-raw[open]{grid-column:auto;}
   .sk-log-raw pre{margin:6px 0 0; font-size:11px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 10px; max-height:280px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace;}
   @media (max-width:880px){ .sk-log{grid-template-columns:64px 1fr auto;} .sk-log-kind,.sk-log-ms{display:none;} .sk-log-text{grid-column:1/-1;} }
   @media (max-width:880px){
@@ -1349,6 +1357,16 @@ function skLogText(o){
   if(o.tell) return "→ "+o.tell+(o.state&&o.state.hint?' · Hinweis: '+o.state.hint:"");
   return "";
 }
+// KI-Aufrufe eines Schritts: Systemprompt, Nutzertext, Schema, Rohantwort – aufklappbar.
+function skPromptBlock(calls){
+  if(!Array.isArray(calls)||!calls.length) return "";
+  return '<details class="sk-log-raw sk-prompt"><summary>Prompt'+(calls.length>1?" ×"+calls.length:"")+'</summary>'+calls.map((c,i)=>
+    '<div class="sk-call'+(c.error?" fehler":"")+'"><div class="sk-call-kopf">Aufruf '+(i+1)+' · '+esc(c.mode)+' · '+Math.round(c.ms)+' ms'+(c.retry?' · Retry':'')+(c.error?' · Fehler: '+esc(c.error):'')+'</div>'+
+    '<div class="sk-call-l">System</div><pre>'+esc(c.system)+'</pre>'+
+    '<div class="sk-call-l">Nutzer</div><pre>'+esc(c.user)+'</pre>'+
+    (c.schema?'<details><summary class="sk-call-l">Schema</summary><pre>'+esc(JSON.stringify(c.schema,null,1))+'</pre></details>':'')+
+    '<div class="sk-call-l">Antwort</div><pre>'+esc(c.response||"")+'</pre></div>').join("")+'</details>';
+}
 // Ein Lauf als Log-Liste; Kind-Läufe (z. B. HITL) eingerückt darunter.
 function skLaufKarte(l,kinder,tiefe){
   const f=SK_FLOWS.find(x=>x.id===l.flow), st=SK_STATUS[l.status]||[l.status,""];
@@ -1356,7 +1374,7 @@ function skLaufKarte(l,kinder,tiefe){
   const zeilen=l.steps.map(s=>{ const a=f&&f.actors.find(x=>x.id===s.actor);
     return '<div class="sk-log '+s.kind+'"><span class="sk-log-zeit">'+skZeit(s.ts)+'</span><span class="sk-log-actor">'+esc(a?a.name:s.actor)+'</span>'+
       '<span class="sk-log-kind">'+s.kind+'</span><span class="sk-log-ms">'+Math.round(s.ms)+' ms</span><span class="sk-log-text">'+esc(skLogText(s.output))+'</span>'+
-      '<details class="sk-log-raw"><summary>JSON</summary><pre>'+esc(JSON.stringify({input:s.input,output:s.output},null,1))+'</pre></details></div>'; }).join("");
+      '<span class="sk-log-details">'+skPromptBlock(s.ai)+'<details class="sk-log-raw"><summary>JSON</summary><pre>'+esc(JSON.stringify({input:s.input,output:s.output},null,1))+'</pre></details></span></div>'; }).join("");
   const kids=(kinder.get(l.id)||[]).map(k=>skLaufKarte(k,kinder,tiefe+1)).join("");
   const offen=skOffen.has(l.id);
   const letzte=l.steps.length?skLogText(l.steps[l.steps.length-1].output):"";

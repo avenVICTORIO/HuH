@@ -548,6 +548,11 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
     id: "024-hitl",
     sql: /* sql */ `UPDATE skill_laeufe SET flow = 'hitl' WHERE flow = 'confirm';`,
   },
+  {
+    // Je Schritt die KI-Aufrufe (Systemprompt, Nutzertext, Schema, Rohantwort, Dauer, Retry) als JSON.
+    id: "025-skill-schritte-ki",
+    sql: /* sql */ `ALTER TABLE skill_schritte ADD COLUMN ki TEXT;`,
+  },
 ];
 
 async function migrieren() {

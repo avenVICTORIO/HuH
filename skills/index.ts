@@ -140,34 +140,35 @@ async function deliver(runId: string, actorId: string, message: Message): Promis
       await step(run.id, actor.id, "error", inbox, { error: inErr }, 0);
       return finish(run, "error", quiet ? "" : `Interner Fehler im Ablauf – ${inErr}`, state, actor.id);
     }
+    const aiCalls: AiCall[] = []; // every model call of this actor step – for the log/export
     const ctx: Context = {
       run: { id: run.id, flow: flow.id }, person, room: run.raum, today: alsDatum(new Date()),
-      state, flows: startable(), ai: aiFor(),
+      state, flows: startable(), ai: aiFor(aiCalls),
     };
     const t0 = Date.now();
     let result: Result;
     try {
       result = await actor.handle(inbox, ctx);
     } catch (e) {
-      await step(run.id, actor.id, "error", inbox, { error: String(e) }, Date.now() - t0);
+      await step(run.id, actor.id, "error", inbox, { error: String(e) }, Date.now() - t0, aiCalls);
       return finish(run, "error", quiet ? "" : `Da ist etwas schiefgelaufen (${actor.name}). Bitte versuch es später noch einmal.`, state, actor.id);
     }
     // 2) Result contract.
     if (!resultValid(result)) {
       const err = `Ergebnis von „${actor.name}“: ${ajv.errorsText(resultValid.errors, { separator: "; " })}`;
-      await step(run.id, actor.id, "error", inbox, { error: err, result }, Date.now() - t0);
+      await step(run.id, actor.id, "error", inbox, { error: err, result }, Date.now() - t0, aiCalls);
       return finish(run, "error", quiet ? "" : "Interner Fehler im Ablauf (ungültiges Actor-Ergebnis).", state, actor.id);
     }
     // 3) Output contract: the state patch must satisfy the actor's output schema.
     if (result.state) {
       const outErr = validate(actor.output, result.state, `Ausgabe von „${actor.name}“`);
       if (outErr) {
-        await step(run.id, actor.id, "error", inbox, { error: outErr, result }, Date.now() - t0);
+        await step(run.id, actor.id, "error", inbox, { error: outErr, result }, Date.now() - t0, aiCalls);
         return finish(run, "error", quiet ? "" : `Interner Fehler im Ablauf – ${outErr}`, state, actor.id);
       }
       state = { ...state, ...result.state };
     }
-    await step(run.id, actor.id, kindOf(result), inbox, result, Date.now() - t0);
+    await step(run.id, actor.id, kindOf(result), inbox, result, Date.now() - t0, aiCalls);
 
     if ("tell" in result) {
       if (result.say) await say(run.raum, flow, result.say);
@@ -240,10 +241,21 @@ async function setStatus(id: string, status: RunStatus, actor: string | null, st
   signal();
 }
 
-async function step(runId: string, actor: string, kind: string, input: unknown, output: unknown, ms: number) {
+/** One model call of an AI actor – recorded verbatim so a run can be reviewed and exported. */
+export type AiCall = {
+  at: number; ms: number; mode: "json" | "text";
+  system: string; user: string; schema?: Schema | null;
+  response: string;                 // raw model text
+  parsed?: unknown;                 // json mode: parsed object
+  error?: string;                   // validation/parse error of this attempt
+  retry?: boolean;                  // this call was the retry after a schema violation
+};
+
+async function step(runId: string, actor: string, kind: string, input: unknown, output: unknown, ms: number, ai: AiCall[] = []) {
   await lauf(
-    "INSERT INTO skill_schritte (id, lauf_id, actor, art, eingabe, ausgabe, dauer_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO skill_schritte (id, lauf_id, actor, art, eingabe, ausgabe, dauer_ms, ts, ki) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     randomUUID(), runId, actor, kind, JSON.stringify(input ?? null).slice(0, 4000), JSON.stringify(output ?? null).slice(0, 4000), ms, Date.now(),
+    ai.length ? JSON.stringify(ai).slice(0, 60000) : null,
   );
 }
 
@@ -255,21 +267,30 @@ async function say(room: string, flow: Flow, text: string) {
 
 const signal = () => live.sende("alle", { typ: "skills" });
 
-function aiFor(): Context["ai"] {
+/** AI access for an actor step; every call is appended to `calls` (prompt, answer, timing). */
+function aiFor(calls: AiCall[]): Context["ai"] {
+  const parseJson = (t: string) => { const m = t.match(/\{[\s\S]*\}/); return JSON.parse(m ? m[0] : t); };
+  const rufe = async (mode: "json" | "text", system: string, user: string, schema?: Schema | null, retry = false): Promise<{ raw: string; data?: unknown; err?: string }> => {
+    const at = Date.now();
+    let raw = "", data: unknown, err: string | undefined;
+    try {
+      raw = await ki.kiText(system, user, { json: mode === "json" });
+      if (mode === "json") { try { data = parseJson(raw); } catch (e) { err = "Antwort ist kein JSON: " + String(e); } }
+      if (!err && schema) err = validate(schema, data, "KI-Antwort") ?? undefined;
+    } catch (e) { err = String(e); }
+    calls.push({ at, ms: Date.now() - at, mode, system, user, schema: schema ?? null, response: raw, parsed: data, error: err, retry: retry || undefined });
+    return { raw, data, err };
+  };
   return {
     active: ki.aktiv,
-    text: (system, user) => ki.kiText(system, user),
+    async text(system, user) { const r = await rufe("text", system, user); if (r.err) throw new Error(r.err); return r.raw; },
     async json(system, user, schema) {
-      let data = await ki.kiJson(system, user);
-      if (!schema) return data as never;
-      let err = validate(schema, data, "KI-Antwort");
-      if (!err) return data as never;
+      let r = await rufe("json", system, user, schema);
+      if (!r.err) return r.data as never;
       // One retry with the schema and the error spelled out.
-      data = await ki.kiJson(
-        `${system}\n\nDeine letzte Antwort war ungültig (${err}). Antworte exakt nach diesem JSON-Schema: ${JSON.stringify(schema)}`, user);
-      err = validate(schema, data, "KI-Antwort");
-      if (err) throw new Error(err);
-      return data as never;
+      r = await rufe("json", `${system}\n\nDeine letzte Antwort war ungültig (${r.err}). Antworte exakt nach diesem JSON-Schema: ${JSON.stringify(schema ?? {})}`, user, schema, true);
+      if (r.err) throw new Error(r.err);
+      return r.data as never;
     },
   };
 }
@@ -328,15 +349,15 @@ export async function runs(person: Mitarbeiter, seeAll: boolean, flowId: string 
       ORDER BY l.aktualisiert DESC LIMIT ?`, ...params, limit);
   const ids = rows.map((r) => r.id);
   const steps = ids.length
-    ? await alle<{ lauf_id: string; actor: string; art: string; eingabe: string; ausgabe: string; dauer_ms: number; ts: number }>(
-        `SELECT lauf_id, actor, art, eingabe, ausgabe, dauer_ms, ts FROM skill_schritte WHERE lauf_id IN (${ids.map(() => "?").join(",")}) ORDER BY ts ASC`, ...ids)
+    ? await alle<{ lauf_id: string; actor: string; art: string; eingabe: string; ausgabe: string; dauer_ms: number; ts: number; ki: string | null }>(
+        `SELECT lauf_id, actor, art, eingabe, ausgabe, dauer_ms, ts, ki FROM skill_schritte WHERE lauf_id IN (${ids.map(() => "?").join(",")}) ORDER BY ts ASC`, ...ids)
     : [];
   return rows.map((r) => ({
     id: r.id, flow: r.flow, status: r.status, person: r.person, room: r.raum,
     createdAt: Number(r.erstellt), updatedAt: Number(r.aktualisiert), currentActor: r.aktueller_actor,
     parentId: r.eltern_id, state: parseJson(r.zustand || "{}"),
     steps: steps.filter((s) => s.lauf_id === r.id).map((s) => ({
-      actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), ts: Number(s.ts), input: parseJson(s.eingabe), output: parseJson(s.ausgabe),
+      actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), ts: Number(s.ts), input: parseJson(s.eingabe), output: parseJson(s.ausgabe), ai: parseJson(s.ki) ?? [],
     })),
   }));
 }
@@ -352,14 +373,14 @@ export async function exportRun(id: string, person: Mitarbeiter, mayAll: boolean
        FROM skill_laeufe l LEFT JOIN mitarbeiter m ON m.id = l.mitarbeiter_id WHERE l.id = ?`, id);
   if (!run || (run.mitarbeiter_id !== person.id && !mayAll)) return null;
   const bundle = async (r: Run): Promise<Record<string, unknown>> => {
-    const steps = await alle<{ actor: string; art: string; eingabe: string; ausgabe: string; dauer_ms: number; ts: number }>(
-      "SELECT actor, art, eingabe, ausgabe, dauer_ms, ts FROM skill_schritte WHERE lauf_id = ? ORDER BY ts ASC", r.id);
+    const steps = await alle<{ actor: string; art: string; eingabe: string; ausgabe: string; dauer_ms: number; ts: number; ki: string | null }>(
+      "SELECT actor, art, eingabe, ausgabe, dauer_ms, ts, ki FROM skill_schritte WHERE lauf_id = ? ORDER BY ts ASC", r.id);
     const children = await alle<Run>("SELECT * FROM skill_laeufe WHERE eltern_id = ? ORDER BY erstellt ASC", r.id);
     return {
       id: r.id, flow: r.flow, flowName: flowById(r.flow)?.name ?? r.flow, status: r.status, currentActor: r.aktueller_actor,
       createdAt: Number(r.erstellt), updatedAt: Number(r.aktualisiert), returnActor: r.rueckkehr_actor,
       state: parseJson(r.zustand || "{}"),
-      steps: steps.map((s) => ({ ts: Number(s.ts), actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), input: parseJson(s.eingabe), output: parseJson(s.ausgabe) })),
+      steps: steps.map((s) => ({ ts: Number(s.ts), actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), input: parseJson(s.eingabe), output: parseJson(s.ausgabe), ai: parseJson(s.ki) ?? [] })),
       children: await Promise.all(children.map(bundle)),
     };
   };
