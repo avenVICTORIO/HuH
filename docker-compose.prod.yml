@@ -3,6 +3,9 @@
 #   - caddy terminiert HTTPS automatisch (Let's Encrypt) für DOMAIN – Passkeys brauchen HTTPS
 #   - der App-Port ist nach außen geschlossen, nur Caddy spricht mit der App
 services:
+  db:
+    ports: !reset []
+
   app:
     image: ${APP_IMAGE:-ghcr.io/avenvictorio/huh:latest}
     build: !reset null

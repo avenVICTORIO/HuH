@@ -1,6 +1,8 @@
 // Generischer, schema-validierter Dokumentenspeicher – der eine Ort für Fachdaten-CRUD.
 // Schemata liegen in `schemata` (JSON Schema, JSONB), Daten in `dokumente` (JSONB).
 // Jede Änderung wird mit Ajv gegen das in der DB gespeicherte Schema geprüft.
+// JSONB-Parameter immer als Objekt binden (nicht vorab stringifizieren): Bun.SQL würde einen
+// String als JSON-String ablegen, PGlite als Objekt – Objekte behandeln beide gleich.
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { randomUUID } from "node:crypto";
@@ -50,9 +52,9 @@ const cache = new Map<string, ValidateFunction>();
 const norm = (z: Record<string, unknown>): SchemaZeile => {
   const schema = (typeof z.schema === "string" ? JSON.parse(z.schema as string) : z.schema) as Record<string, unknown>;
   const props = Object.keys((schema.properties as Record<string, unknown>) ?? {});
-  // System-Entitäten: Reihenfolge aus dem Datenmodell; sonst optional schema["x-felder"], sonst wie gespeichert.
+  // System-Entitäten: Reihenfolge aus dem Datenmodell; sonst optional schema["x-fields"], sonst wie gespeichert.
   const e = ENTITAETEN.find((x) => x.id === z.id);
-  const gewuenscht = e ? e.spalten.map((s) => s.name) : Array.isArray(schema["x-felder"]) ? (schema["x-felder"] as string[]) : props;
+  const gewuenscht = e ? e.spalten.map((s) => s.name) : Array.isArray(schema["x-fields"]) ? (schema["x-fields"] as string[]) : props;
   const felder = [...gewuenscht.filter((f) => props.includes(f)), ...props.filter((f) => !gewuenscht.includes(f))];
   return {
     ...(z as SchemaZeile), schema, felder,
@@ -99,7 +101,7 @@ export async function schemaAnlegen(
   await lauf(
     `INSERT INTO schemata (id, name, beschreibung, schema, lesen, schreiben, signal, version, system, erstellt, aktualisiert)
      VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, 1, 0, ?, ?)`,
-    eingabe.id, eingabe.name.trim(), eingabe.beschreibung ?? null, JSON.stringify(eingabe.schema),
+    eingabe.id, eingabe.name.trim(), eingabe.beschreibung ?? null, eingabe.schema,
     eingabe.lesen ?? null, eingabe.schreiben ?? null, eingabe.signal ?? null, now, now,
   );
   schemaCache.delete(eingabe.id);
@@ -120,7 +122,7 @@ export async function schemaAendern(
   };
   await lauf(
     "UPDATE schemata SET name = ?, beschreibung = ?, schema = ?::jsonb, lesen = ?, schreiben = ?, signal = ?, version = version + 1, aktualisiert = ? WHERE id = ?",
-    neu.name, neu.beschreibung, JSON.stringify(neu.schema), neu.lesen, neu.schreiben, neu.signal, Date.now(), id,
+    neu.name, neu.beschreibung, neu.schema, neu.lesen, neu.schreiben, neu.signal, Date.now(), id,
   );
   cache.delete(`${id}@${alt.version}`);
   schemaCache.delete(id);
@@ -266,7 +268,7 @@ export async function anlegen(s: SchemaZeile, roh: unknown, id?: string): Promis
   const now = Date.now();
   try {
     await lauf("INSERT INTO dokumente (id, schema_id, data, erstellt, aktualisiert) VALUES (?, ?, ?::jsonb, ?, ?)",
-      neuId, s.id, JSON.stringify(p.data), now, now);
+      neuId, s.id, p.data, now, now);
   } catch (e) { return dbFehler(e); }
   signal(s);
   return { ok: true, dokument: (await lesen(s, neuId))! };
@@ -277,7 +279,7 @@ export async function ersetzen(s: SchemaZeile, id: string, roh: unknown): Promis
   const p = pruefen(s, roh);
   if (!p.ok) return p;
   try {
-    await lauf("UPDATE dokumente SET data = ?::jsonb, aktualisiert = ? WHERE schema_id = ? AND id = ?", JSON.stringify(p.data), Date.now(), s.id, id);
+    await lauf("UPDATE dokumente SET data = ?::jsonb, aktualisiert = ? WHERE schema_id = ? AND id = ?", p.data, Date.now(), s.id, id);
   } catch (e) { return dbFehler(e); }
   signal(s);
   return { ok: true, dokument: (await lesen(s, id))! };
