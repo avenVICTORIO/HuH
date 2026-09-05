@@ -66,6 +66,21 @@ export const chatWidgetCss = /* css */ `
   .chat-senden{width:46px; height:46px; border:none; border-radius:14px; background:var(--wald); color:#fff; font-size:18px; cursor:pointer; flex:none;}
   .chat-senden:disabled{opacity:.5;}
   .chat-liste-back{display:none;}
+  /* HITL-Leiste (Mensch entscheidet) – steht an Stelle des Eingabefelds */
+  .chat-eingabe[hidden], .chat-hitl[hidden], .hitl-frei[hidden]{display:none;}
+  .chat-hitl{padding:12px 14px 10px; border-top:1px solid var(--line); background:var(--card);}
+  .hitl-kopf{display:flex; align-items:baseline; gap:10px; margin-bottom:10px; flex-wrap:wrap;}
+  .hitl-tag{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; color:var(--amber); white-space:nowrap;}
+  .hitl-frage{font-family:var(--serif); font-size:17px; color:var(--wald); line-height:1.25;}
+  .hitl-optionen{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;}
+  .hitl-optionen:empty{display:none;}
+  .hitl-opt{border:none; border-radius:14px; padding:12px 16px; background:var(--wald); color:#fff; font-family:var(--sans); font-size:15px; font-weight:600; cursor:pointer; box-shadow:0 8px 20px -12px rgba(60,74,59,.6);}
+  .hitl-opt.zweit{background:var(--creme); color:var(--wald); border:1px solid var(--line); box-shadow:none;}
+  .hitl-opt:active{transform:scale(.97);}
+  .hitl-frei{display:flex; gap:10px; align-items:flex-end;}
+  .hitl-frei textarea{flex:1; resize:none; max-height:120px; padding:11px 14px; border:1px solid var(--line); border-radius:14px; font-family:var(--sans); font-size:15px; background:var(--creme); color:var(--ink); line-height:1.4;}
+  .hitl-frei textarea:focus{outline:none; border-color:var(--wald-hell);}
+  .hitl-abbruch{margin-top:8px; background:none; border:none; color:var(--grey); font-size:12.5px; cursor:pointer; text-decoration:underline; font-family:var(--sans); padding:2px 0;}
   @media (max-width:880px){
     .chat-overlay{padding:0;}
     .chat-panel{display:flex; flex-direction:column; width:100%; height:100%; border-radius:0;}
@@ -102,6 +117,16 @@ export const chatWidgetHtml = /* html */ `
         <button class="chat-x" id="chatSchliessen" title="Schließen">✕</button>
       </div>
       <div class="chat-verlauf" id="chatVerlauf"></div>
+      <!-- Mensch entscheidet (HITL): ersetzt das Eingabefeld, solange eine Antwort aussteht -->
+      <div class="chat-hitl" id="chatHitl" hidden>
+        <div class="hitl-kopf"><span class="hitl-tag" id="hitlTag"></span><span class="hitl-frage" id="hitlFrage"></span></div>
+        <div class="hitl-optionen" id="hitlOptionen"></div>
+        <div class="hitl-frei" id="hitlFrei">
+          <textarea id="hitlText" rows="1" maxlength="2000" placeholder="Eigene Antwort …"></textarea>
+          <button type="button" class="chat-senden" id="hitlSenden" title="Senden">➤</button>
+        </div>
+        <button type="button" class="hitl-abbruch" id="hitlAbbruch">Abbrechen</button>
+      </div>
       <form class="chat-eingabe" id="chatForm" autocomplete="off">
         <textarea id="chatText" rows="1" maxlength="2000" placeholder="Nachricht schreiben …"></textarea>
         <button type="submit" class="chat-senden" id="chatSendenBtn" title="Senden">➤</button>
@@ -120,10 +145,11 @@ window.chatWidget=(function(){
   const hm=ts=>{ const d=new Date(ts); return p2(d.getHours())+":"+p2(d.getMinutes()); };
   const MON=["Jan","Feb","März","April","Mai","Juni","Juli","Aug","Sep","Okt","Nov","Dez"];
   const mobil=()=>window.innerWidth<=880;
-  const KI_NAME="avenVictorio"; // Anzeigename der KI-Assistenz (Server: chat.ts KI_NAME)
+  const KI_NAME="avenVICTORIO"; // Anzeigename der KI-Assistenz (Server: chat.ts KI_NAME)
   let me=null, admin=false, sendeWs=function(){};
   let raeume=[], aktiv=null, nachrichten=[], scrollErzwingen=false, offen=false, geladen=false;
   let kiTippt=null; // {raum, job, text} – die KI schreibt gerade (gestreamt über den WebSocket)
+  let pending=null; // ausstehende menschliche Antwort im aktiven Raum (HITL oder ein anderes ask)
 
   function init(o){ me=o.meId; admin=!!o.admin; sendeWs=o.senden||function(){}; g("chatFab").hidden=false; ladeRaeume(); }
   function aus(){ schliessen(); g("chatFab").hidden=true; raeume=[]; aktiv=null; nachrichten=[]; geladen=false; me=null; badge(0); }
@@ -150,18 +176,36 @@ window.chatWidget=(function(){
     offen=true; g("chatOverlay").hidden=false; document.body.classList.add("chat-offen"); schubladeZu();
     await ladeRaeume();
     if(!aktiv&&raeume.length){ const erst=raeume.find(r=>r.ungelesen)||raeume[0]; await raumOeffnen(erst.id); }
-    else if(aktiv){ await hole(); gelesenLokal(aktiv); }
-    if(!mobil()) g("chatText").focus();
+    else if(aktiv){ await hole(); gelesenLokal(aktiv); ladePending(); }
+    if(!mobil()&&!pending) g("chatText").focus();
+  }
+  // Steht im aktiven Raum eine menschliche Antwort aus? Dann zeigt die HITL-Leiste Frage + Optionen statt des Eingabefelds.
+  async function ladePending(){
+    if(!me||!aktiv){ pending=null; renderPending(); return; }
+    const raum=aktiv;
+    try{ const r=await fetch("/api/skills/pending?raum="+encodeURIComponent(raum)); const p=r.ok?await r.json():null; if(raum!==aktiv) return; pending=p; }catch(x){ pending=null; }
+    renderPending();
+  }
+  function renderPending(){
+    const p=pending, box=g("chatHitl"), form=g("chatForm");
+    if(!p){ box.hidden=true; form.hidden=false; return; }
+    form.hidden=true; box.hidden=false;
+    g("hitlTag").textContent=(p.label||"Skill")+(p.question?"":" · wartet auf deine Antwort");
+    g("hitlFrage").textContent=p.question||"";
+    g("hitlOptionen").innerHTML=(p.options||[]).map((o,i)=>'<button type="button" class="hitl-opt'+(i?" zweit":"")+'" data-hitl="'+esc(o.label)+'">'+esc(o.label)+'</button>').join("");
+    g("hitlFrei").hidden=!p.allowText;
+    g("hitlText").placeholder=(p.options&&p.options.length)?"Oder eigene Antwort …":"Deine Antwort …";
+    if(!mobil()&&p.allowText) g("hitlText").focus();
   }
   function schliessen(){ offen=false; g("chatOverlay").hidden=true; document.body.classList.remove("chat-offen"); schubladeZu(); }
   function schubladeZu(){ g("chatPanel").classList.remove("liste-offen"); }
 
   async function raumOeffnen(id){
-    aktiv=id; nachrichten=[]; scrollErzwingen=true;
+    aktiv=id; nachrichten=[]; scrollErzwingen=true; pending=null; renderPending();
     const r=raeume.find(x=>x.id===id);
     g("chatTitel").textContent=r?r.titel:"Chat"; g("chatUnter").textContent=r?(r.untertitel||""):"";
     renderRaeume(); schubladeZu();
-    await hole(); gelesenLokal(id);
+    await hole(); gelesenLokal(id); ladePending();
     if(!mobil()) g("chatText").focus();
   }
   async function hole(){
@@ -196,9 +240,10 @@ window.chatWidget=(function(){
     v.innerHTML=html;
     if(amEnde||scrollErzwingen){ v.scrollTop=v.scrollHeight; scrollErzwingen=false; }
   }
-  async function senden(){
-    const ta=g("chatText"); const text=ta.value.trim(); if(!text||!aktiv) return;
-    ta.value=""; ta.style.height=""; scrollErzwingen=true; g("chatSendenBtn").disabled=true;
+  async function senden(vorgabe){
+    const ta=g("chatText"), ht=g("hitlText");
+    const text=(vorgabe!=null?vorgabe:(pending?ht.value:ta.value)).trim(); if(!text||!aktiv) return;
+    ta.value=""; ta.style.height=""; ht.value=""; ht.style.height=""; scrollErzwingen=true; g("chatSendenBtn").disabled=true;
     try{
       const r=await fetch("/api/chat/raum/"+encodeURIComponent(aktiv),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
       if(!r.ok){ ta.value=text; alert((await r.json()).fehler||"Senden fehlgeschlagen."); return; }
@@ -206,12 +251,13 @@ window.chatWidget=(function(){
       // Das Live-Ereignis kann schneller sein als die Antwort – nie doppelt anhängen.
       if(!nachrichten.some(x=>x.id===n.id)){ nachrichten.push(n); renderVerlauf(); }
       const rm=raeume.find(x=>x.id===aktiv); if(rm){ rm.letzte={text:n.text,ts:n.ts,eigene:true}; renderRaeume(); }
-    }finally{ g("chatSendenBtn").disabled=false; ta.focus(); }
+    }finally{ g("chatSendenBtn").disabled=false; if(!mobil()) (pending?ht:ta).focus(); }
   }
 
   // Live-Ereignisse von der Seite (WebSocket).
   function ereignis(d){
     if(!me) return;
+    if(d.typ==="skills"){ if(offen&&aktiv) ladePending(); return; }
     if(d.typ==="team"){ if(geladen) ladeRaeume(); return; }
     if(d.typ==="chat.geloescht"){
       if(d.raum===aktiv){ const v=nachrichten.length; nachrichten=nachrichten.filter(n=>n.id!==d.id); if(nachrichten.length!==v) renderVerlauf(); }
@@ -231,6 +277,7 @@ window.chatWidget=(function(){
     if(imRaum){
       if(!nachrichten.some(x=>x.id===n.id)){ nachrichten.push(n); renderVerlauf(); }
       sendeWs({typ:"chat.gelesen",raum:d.raum});
+      if(n.ki) ladePending(); // eine Frage eines Skills könnte dabei sein
     }
     const r=raeume.find(x=>x.id===d.raum);
     if(r){ r.letzte={text:n.text,ts:n.ts,eigene:n.eigene,ki:!!n.ki}; if(!n.eigene&&!imRaum) r.ungelesen=(r.ungelesen||0)+1; renderRaeume(); badgeAusRaeumen(); }
@@ -247,6 +294,11 @@ window.chatWidget=(function(){
   g("chatForm").addEventListener("submit",e=>{ e.preventDefault(); senden(); });
   g("chatText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); senden(); } });
   g("chatText").addEventListener("input",e=>{ const t=e.target; t.style.height="auto"; t.style.height=Math.min(140,t.scrollHeight)+"px"; });
+  g("hitlOptionen").addEventListener("click",e=>{ const b=e.target.closest("[data-hitl]"); if(b) senden(b.dataset.hitl); });
+  g("hitlSenden").addEventListener("click",()=>senden());
+  g("hitlText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); senden(); } });
+  g("hitlText").addEventListener("input",e=>{ const t=e.target; t.style.height="auto"; t.style.height=Math.min(120,t.scrollHeight)+"px"; });
+  g("hitlAbbruch").addEventListener("click",async ()=>{ if(!pending) return; await fetch("/api/skills/laeufe/"+encodeURIComponent(pending.runId),{method:"DELETE"}); ladePending(); });
   g("chatVerlauf").addEventListener("click",async e=>{
     const b=e.target.closest("[data-del]"); if(!b) return;
     if(!confirm("Nachricht löschen?")) return;

@@ -3,10 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "postinstall": "bun run scripts/init-db.ts",
     "dev": "bun run --hot index.ts",
     "icons": "bun run scripts/icons.ts",
-    "start": "bun run index.ts"
+    "start": "bun run index.ts",
+    "init-db": "bun run scripts/init-db.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",

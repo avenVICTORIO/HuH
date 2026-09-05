@@ -1,9 +1,9 @@
 // Flow "Zeiten eintragen" – from an employee's point of view:
 //   "Trag mir bitte gestern 16:30 bis 23:00 ein."
-//   -> understand (AI) -> validate (code) -> [component "confirm" (AI)] -> decide (code) -> record (code)
+//   -> understand (AI) -> validate (code) -> [component "hitl" (human answers)] -> decide (code) -> record (code)
 // Everything this flow needs lives in this folder. It is started by the Skill-Router
 // (AI) from its description and examples. The confirmation is not an actor of its own
-// but the reusable flow "confirm", called by "validate"; the answer returns to "decide".
+// but the reusable HITL flow, called by "validate"; the answer returns to "decide".
 import type { Flow } from "../types";
 import understand from "./actors/understand";
 import validate from "./actors/validate";
@@ -22,13 +22,13 @@ const flow: Flow = {
   ],
   start: "understand",
   actors: [understand, validate, decide, record],
-  refs: [{ flow: "confirm", pos: { x: 640, y: 120 } }],
+  refs: [{ flow: "hitl", pos: { x: 640, y: 120 } }],
   edges: [
     { from: "understand", to: "understand", label: "Rückfrage" },
     { from: "understand", to: "validate" },
     { from: "validate", to: "understand", label: "unplausibel" },
-    { from: "validate", to: "flow:confirm", label: "call" },
-    { from: "flow:confirm", to: "decide", label: "return" },
+    { from: "validate", to: "flow:hitl", label: "call" },
+    { from: "flow:hitl", to: "decide", label: "return" },
     { from: "decide", to: "record", label: "ja" },
     { from: "decide", to: "understand", label: "korrigieren" },
   ],

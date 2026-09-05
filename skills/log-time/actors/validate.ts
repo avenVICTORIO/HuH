@@ -1,5 +1,5 @@
 // Actor "validate" (code): plausibility, overlaps, duration. Pure logic, no AI.
-// Then calls the component "confirm"; its answer returns to "decide".
+// Then calls the HITL component; the human answer returns to "decide".
 import type { Actor } from "../../types";
 import { sitzungenFuer } from "../../../auth";
 
@@ -22,9 +22,9 @@ const actor: Actor = {
   id: "validate",
   name: "Prüfen",
   kind: "code",
-  description: "Prüft Datum und Uhrzeiten, erkennt Überschneidungen mit vorhandenen Zeiten, rechnet die Dauer und ruft den Baustein „Bestätigung“.",
+  description: "Prüft Datum und Uhrzeiten, erkennt Überschneidungen mit vorhandenen Zeiten, rechnet die Dauer und holt über den HITL-Baustein die Bestätigung ein.",
   pos: { x: 340, y: 120 },
-  delegates: [{ via: "call", to: ["confirm"] }],
+  delegates: [{ via: "call", to: ["hitl"] }],
   input: {
     type: "object",
     required: ["time"],
@@ -74,9 +74,13 @@ const actor: Actor = {
     }
     const label = `${prettyDate(t.date)}, ${t.from}–${t.to} Uhr (${hours.toFixed(hours % 1 ? 1 : 0).replace(".", ",")} h)`;
     return {
-      call: "confirm",
+      call: "hitl",
       then: "decide",
-      input: { question: `Ich trage ein: ${label}. Passt das?` },
+      input: {
+        question: `Ich trage ein: ${label}. Passt das?`,
+        options: [{ id: "yes", label: "Ja, eintragen" }, { id: "no", label: "Nein, andere Zeit" }],
+        allowText: true, // z. B. „bis 22 Uhr“ direkt als Korrektur
+      },
       state: { checked: { start, end, hours: Math.round(hours * 100) / 100, label } },
     };
   },
