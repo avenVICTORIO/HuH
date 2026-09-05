@@ -1,4 +1,5 @@
 import { baseCss, iconHead, teamIcons } from "./styles";
+import { chatWidgetCss, chatWidgetHtml, chatWidgetJs } from "./chatwidget";
 
 export const terminalPage = /* html */ `<!DOCTYPE html>
 <html lang="de">
@@ -84,9 +85,6 @@ ${baseCss}
   .tiles{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
   .tile{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px 16px; text-align:center; cursor:pointer; transition:transform .06s;}
   .tile:active{transform:scale(.97);}
-  .tile{position:relative;}
-  .tile-badge{position:absolute; top:10px; right:10px; min-width:22px; padding:2px 7px; border-radius:999px;
-    background:var(--amber); color:#fff; font-size:12px; font-weight:700; text-align:center; font-family:var(--sans);}
   .tile .ico{display:block; width:34px; height:34px; margin:0 auto 10px; color:var(--amber);}
   .tile .ico svg{width:100%; height:100%;}
   .tile .t{font-family:var(--serif); font-size:19px; color:var(--wald);}
@@ -111,14 +109,6 @@ ${baseCss}
   .proz .pt{font-family:var(--serif); font-size:clamp(16px,4vw,19px); color:var(--wald);}
   .proz .pp{font-variant-numeric:tabular-nums; font-size:13px; color:var(--clay); margin-top:5px;}
   .proz .pp.ok{color:var(--wald);}
-
-  /* Vorschlag-Overlay (direkt nach Login) */
-  .vorschlag-back{position:fixed; inset:0; z-index:40; background:rgba(34,38,31,.45); display:flex; align-items:center; justify-content:center; padding:6vw;}
-  .vorschlag-karte{background:var(--card); border-radius:22px; padding:30px 28px; width:min(460px,92vw); text-align:center; box-shadow:0 24px 60px -20px rgba(0,0,0,.5);}
-  .vk-titel{font-family:var(--serif); font-size:clamp(24px,6vw,32px); color:var(--wald); margin-bottom:8px;}
-  .vk-text{font-size:clamp(15px,3.6vw,17px); color:var(--clay); margin:0 0 22px;}
-  .vk-primary{display:block; width:100%; border:none; border-radius:16px; padding:18px; background:var(--wald); color:#fff; font-size:clamp(17px,4.6vw,20px); font-weight:600; cursor:pointer; font-family:var(--sans);}
-  .vk-secondary{display:block; width:100%; margin-top:12px; background:none; border:1px solid var(--line); border-radius:16px; padding:14px; color:var(--clay); font-size:15px; cursor:pointer; font-family:var(--sans);}
 
   /* ---------- ABLAUF-SCREEN (Aufbau/Leerlauf/Abbau) ---------- */
   #screen-ablauf .ablauf-fortschritt{font-variant-numeric:tabular-nums; font-size:16px; color:var(--wald); font-weight:600;}
@@ -167,6 +157,7 @@ ${baseCss}
   .toast.show{opacity:1; transform:translate(-50%,-50%) scale(1);}
   .toast.out{background:var(--clay);}
   .toast .big{font-family:var(--serif); font-size:1.5em; display:block; margin-top:6px;}
+${chatWidgetCss}
 </style>
 </head>
 <body>
@@ -246,7 +237,6 @@ ${baseCss}
     <template id="tplWerkzeuge">
       <a class="tile werkzeug" href="/app/meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
       <a class="tile werkzeug" href="/app/meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
-      <a class="tile werkzeug" href="/app/chat" data-cap="" data-tile="chat"><span class="ico">${teamIcons.chat}</span><span class="t">Chat</span></a>
       <a class="tile werkzeug" href="/app/reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
       <a class="tile werkzeug" href="/app/heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
       <a class="tile werkzeug" href="/app/schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
@@ -258,15 +248,6 @@ ${baseCss}
     <div class="tiles" id="tilesWerkzeuge"></div>
   </div>
 
-  <!-- Vorschlag direkt nach Login -->
-  <div class="vorschlag-back" id="vorschlag" style="display:none">
-    <div class="vorschlag-karte">
-      <div class="vk-titel" id="vkTitel">Bereit für den Aufbau?</div>
-      <p class="vk-text" id="vkText">Sollen wir den Aufbau gemeinsam durchgehen?</p>
-      <button class="vk-primary" id="vkStart">Aufbau starten</button>
-      <button class="vk-secondary" id="vkSpaeter">Später</button>
-    </div>
-  </div>
 </section>
 
 <!-- ============ ABLAUF (Aufbau / Leerlauf / Abbau) ============ -->
@@ -294,7 +275,9 @@ ${baseCss}
 
 <div class="toast" id="toast"></div>
 
+${chatWidgetHtml}
 <script>
+${chatWidgetJs}
 "use strict";
 const WD=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 const MO=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
@@ -449,7 +432,6 @@ $("klOk").addEventListener("click",async ()=>{
   const r=await fetch("/api/klaerung",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({zeit})});
   const d=await r.json();
   if(!r.ok){ toast(esc(d.fehler||"Das hat nicht geklappt."),"out",2600); return; }
-  toast("Danke! <span class='big'>Feierabend "+hm(d.ende)+" Uhr nachgetragen</span>","in");
   current.clockedIn=false; current.since=null; current.klaerung=null;
   betreten();
 });
@@ -458,6 +440,7 @@ $("klOk").addEventListener("click",async ()=>{
    Gestempelt wird bewusst über das Menü, nie automatisch. */
 function betreten(){
   liveVerbinden();
+  { const c=current.caps||[]; chatWidget.init({meId:current.id, admin:c.includes("*")||c.includes("chat.admin"), senden:liveSenden}); }
   if(current.klaerung){ zeigeKlaerung(); return; }
   nachLogin();
 }
@@ -471,13 +454,14 @@ function liveVerbinden(){
   ws.onmessage=e=>{
     let d; try{ d=JSON.parse(e.data); }catch(x){ return; }
     if(!current) return;
-    if(d.typ==="chat.nachricht"||d.typ==="chat.geloescht") ladeChatBadge();
+    if(d.typ==="chat.nachricht"||d.typ==="chat.geloescht"||d.typ==="team") chatWidget.ereignis(d);
     else if(d.typ==="ablauf"){ ladeAblaufHome(); if(document.getElementById("screen-ablauf").classList.contains("active")) ladeAblauf(); }
   };
   ws.onclose=()=>{ liveWs=null; if(!current) return; setTimeout(liveVerbinden,liveWarte); liveWarte=Math.min(liveWarte*2,30000); };
   ws.onerror=()=>{ try{ ws.close(); }catch(x){} };
 }
 function liveTrennen(){ const ws=liveWs; liveWs=null; if(ws){ try{ ws.close(); }catch(x){} } }
+function liveSenden(obj){ if(liveWs&&liveWs.readyState===1) liveWs.send(JSON.stringify(obj)); }
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
   // Werkzeug-Karten nach den Fähigkeiten der eigenen Rolle (Capability-Bundles).
@@ -501,16 +485,6 @@ function renderHome(){
   }
   updateDuration();
   ladeAblaufHome();
-  ladeChatBadge();
-}
-/* Ungelesene Chat-Nachrichten als Zähler auf der Chat-Kachel. */
-async function ladeChatBadge(){
-  const tile=document.querySelector('[data-tile="chat"]'); if(!tile) return;
-  try{
-    const d=await fetch("/api/chat/ungelesen").then(r=>r.ok?r.json():null);
-    const alt=tile.querySelector(".tile-badge"); if(alt) alt.remove();
-    if(d&&d.ungelesen>0){ const b=document.createElement("span"); b.className="tile-badge"; b.textContent=d.ungelesen>99?"99+":String(d.ungelesen); tile.appendChild(b); }
-  }catch(e){}
 }
 function updateDuration(){
   if(!current||!current.clockedIn) return;
@@ -536,17 +510,15 @@ $("btnStamp").addEventListener("click",async ()=>{
     const d=await stamp("out");
     if(!d) return;
     current.clockedIn=false;
-    toast("Pfiat di, "+esc(current.name)+"! <span class='big'>Ausgestempelt "+hm(d.ts)+" Uhr</span>","out");
-    setTimeout(sessionEnde,1600);
+    sessionEnde();
   }else{
     const d=await stamp("in");
     if(!d) return;
     current.clockedIn=true; current.since=d.ts;
-    toast("Willkommen zurück! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
     renderHome();
   }
 });
-function sessionEnde(){ fetch("/api/session",{method:"DELETE"}); current=null; liveTrennen(); show("screen-login"); }
+function sessionEnde(){ fetch("/api/session",{method:"DELETE"}); current=null; liveTrennen(); chatWidget.aus(); show("screen-login"); }
 $("btnLogout").addEventListener("click",sessionEnde);
 
 /* ---------- Platzhalter-Kacheln ---------- */
@@ -578,20 +550,9 @@ async function ladeAblaufHome(){
   return st;
 }
 
-/* --- Vorschlag direkt nach Login --- */
-function zeigeVorschlag(st){
-  $("vkText").textContent = st.aufbau.done>0
-    ? "Der Aufbau ist noch nicht fertig ("+st.aufbau.done+"/"+st.aufbau.total+"). Weitermachen?"
-    : "Sollen wir den Aufbau gemeinsam durchgehen?";
-  $("vorschlag").style.display="";
-}
 async function nachLogin(){
   renderHome(); show("screen-home");
-  const st=await fetch("/api/ablauf/status?datum="+heute()).then(r=>r.json()).catch(()=>null);
-  if(st&&!st.fehler&&st.aufbau.total>0&&!st.aufbau.fertig) zeigeVorschlag(st);
 }
-$("vkStart").addEventListener("click",()=>{ $("vorschlag").style.display="none"; starteAblauf("aufbau"); });
-$("vkSpaeter").addEventListener("click",()=>{ $("vorschlag").style.display="none"; });
 $("ablaufBanner").addEventListener("click",()=>starteAblauf("aufbau"));
 $("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c) starteAblauf(c.dataset.proz); });
 
