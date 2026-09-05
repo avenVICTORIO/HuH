@@ -358,7 +358,7 @@ export function karteInvalidieren() {
   cacheHtml = null;
 }
 
-/** Speisekarte aus der Datenbank rendern (Admin pflegt sie unter /team#karte). */
+/** Speisekarte aus der Datenbank rendern (Admin pflegt sie unter /app/karte). */
 export async function karteSeite(): Promise<string> {
   if (cacheHtml) return cacheHtml;
 

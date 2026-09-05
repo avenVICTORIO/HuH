@@ -209,7 +209,7 @@ ${baseCss}
     </div>
   </div>
 
-  <div class="loginfoot">Hand aufs Herz · Team-Terminal &nbsp;·&nbsp; <a href="/team">Team &amp; Zeiten</a></div>
+  <div class="loginfoot">Hand aufs Herz · Team-Terminal &nbsp;·&nbsp; <a href="/app/heute">Team &amp; Zeiten</a></div>
 </section>
 
 <!-- ============ KLÄRUNG: Ausstempeln vergessen ============ -->
@@ -257,15 +257,15 @@ ${baseCss}
     <div class="tiles-trenner">Werkzeuge</div>
     <!-- Werkzeug-Karten nach Fähigkeiten der Rolle (data-cap leer = für alle). -->
     <template id="tplWerkzeuge">
-      <a class="tile werkzeug" href="/team#meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
-      <a class="tile werkzeug" href="/team#meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
-      <a class="tile werkzeug" href="/team#reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
-      <a class="tile werkzeug" href="/team#heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
-      <a class="tile werkzeug" href="/team#schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
-      <a class="tile werkzeug" href="/team#auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
-      <a class="tile werkzeug" href="/team#ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
-      <a class="tile werkzeug" href="/team#karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
-      <a class="tile werkzeug" href="/team#team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+      <a class="tile werkzeug" href="/app/meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
+      <a class="tile werkzeug" href="/app/meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+      <a class="tile werkzeug" href="/app/reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
+      <a class="tile werkzeug" href="/app/heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
+      <a class="tile werkzeug" href="/app/schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
+      <a class="tile werkzeug" href="/app/auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+      <a class="tile werkzeug" href="/app/ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
+      <a class="tile werkzeug" href="/app/karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
+      <a class="tile werkzeug" href="/app/team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
     </template>
     <div class="tiles" id="tilesWerkzeuge"></div>
   </div>
@@ -564,7 +564,7 @@ async function ladeReservierungenHeute(){
   else for(const r of aktiv){
     html+='<div class="tp-res"><span class="tp-zeit">'+esc(r.zeit)+'</span><span class="tp-name">'+esc(r.name)+'</span><span class="tp-det">'+r.personen+' Pers. · '+(r.bereich==="draussen"?"Draußen":"Drinnen")+'</span></div>';
   }
-  html+='<a class="tp-mehr" href="/team#reservierungen">Alle Reservierungen verwalten ›</a>';
+  html+='<a class="tp-mehr" href="/app/reservierungen">Alle Reservierungen verwalten ›</a>';
   box.innerHTML=html;
   wrap.style.display="";
 }
