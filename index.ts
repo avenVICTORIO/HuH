@@ -21,6 +21,7 @@ import * as ablauf from "./ablaeufe";
 import * as chat from "./chat";
 import * as live from "./live";
 import * as ki from "./ki";
+import * as skills from "./skills";
 import { OEFFNUNG } from "./site/info";
 import {
   CAPABILITIES,
@@ -59,7 +60,7 @@ const nurTeamAdmin = mitCap("team.admin");
 /** Bereiche des Team-Bereichs – jeder unter /app/<bereich> erreichbar (Tabs in dashboard.ts). */
 const APP_BEREICHE = new Set([
   "heute", "reservierungen", "meine-schichten", "meine-zeiten", "karte",
-  "schichtplan", "auswertung", "ablaeufe", "team", "rollen",
+  "schichtplan", "auswertung", "ablaeufe", "team", "rollen", "skills",
 ]);
 
 /** Dauerhafte Umleitung – hält die Links der alten Website am Leben. */
@@ -1192,7 +1193,9 @@ const routen = {
         const inhalt = text(b?.text, 2000);
         if (!inhalt) return Response.json({ fehler: "Bitte eine Nachricht eingeben." }, { status: 400 });
         const n = await chat.senden(ich, raum, inhalt);
-        ki.antworte(raum); // läuft im Hintergrund, Antwort kommt gestreamt über den WebSocket
+        // Erst die Skill-Flows: Start eines Flows oder Antwort auf eine Rückfrage. Sonst antwortet die KI.
+        const uebernommen = await skills.verarbeite(ich, raum, inhalt).catch((e) => { console.error("Skill-Fehler:", e); return false; });
+        if (!uebernommen) ki.antworte(raum); // läuft im Hintergrund, Antwort kommt gestreamt über den WebSocket
         return Response.json(n, { status: 201 });
       }),
     },
@@ -1203,6 +1206,34 @@ const routen = {
         }
         return new Response(null, { status: 204 });
       }),
+    },
+
+    // ---- Skill-Flows: Katalog, Läufe, manueller Start, Abbruch ----
+    "/api/skills": nurTeam(async () => Response.json(skills.katalog())),
+    "/api/skills/laeufe": nurTeam(async (_req, ich) =>
+      Response.json(await skills.laeufe(ich, hatCap(ich, "team.admin")))),
+    "/api/skills/laeufe/:id": {
+      DELETE: nurTeam(async (req, ich) =>
+        (await skills.abbrechen(req.params.id, ich, hatCap(ich, "team.admin")))
+          ? new Response(null, { status: 204 })
+          : Response.json({ fehler: "nicht gefunden" }, { status: 404 })),
+    },
+    "/api/skills/:id/start": {
+      POST: nurTeam(async (req, ich) => {
+        const flow = skills.FLOWS.find((f) => f.id === req.params.id);
+        if (!flow) return Response.json({ fehler: "Flow nicht gefunden" }, { status: 404 });
+        const b = await req.json().catch(() => ({}));
+        const startText = text(b?.text, 500) || flow.beispiele[0] || flow.name;
+        // Der Flow läuft im Chat: Mitarbeiter im eigenen Direkt-Chat, Chat-Admins (sehen ihren eigenen nicht) im Team-Raum.
+        const raum = b?.raum === chat.TEAM_RAUM || hatCap(ich, "chat.admin") ? chat.TEAM_RAUM : chat.dmRaum(ich.id);
+        await chat.senden(ich, raum, startText);
+        const id = await skills.starte(flow, ich, raum, startText);
+        return Response.json({ id, raum }, { status: 201 });
+      }),
+    },
+    "/skills-canvas": async (req: Request) => {
+      if (!(await wer(req))) return new Response("Bitte anmelden", { status: 401 });
+      return new Response(Bun.file("public/skills-canvas.html"), { headers: { "Content-Type": "text/html; charset=utf-8" } });
     },
 
     // ---- Rollen-Katalog: lesen fürs Team, pflegen nur Admin ----

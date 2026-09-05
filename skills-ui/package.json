@@ -1,0 +1,19 @@
+{
+  "name": "huh-skills-canvas",
+  "private": true,
+  "type": "module",
+  "description": "Svelte-Flow-Canvas für die Skill-Flows – wird als eine Datei nach ../public/skills-canvas.html gebaut.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "svelte": "^5.19.0",
+    "vite": "^6.1.0",
+    "vite-plugin-singlefile": "^2.1.0"
+  },
+  "dependencies": {
+    "@xyflow/svelte": "^1.0.2"
+  }
+}

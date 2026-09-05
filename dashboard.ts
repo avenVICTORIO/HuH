@@ -232,6 +232,28 @@ ${baseCss}
   .edit-zeile .weg{border:none; background:var(--creme); border-radius:50%; width:22px; height:22px;
     cursor:pointer; color:var(--rot); font-size:13px; display:grid; place-items:center;}
 
+  /* ---- Skills ---- */
+  .sk-liste{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; margin:12px 0 16px;}
+  .sk-karte{text-align:left; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; cursor:pointer; font-family:var(--sans); color:var(--ink);}
+  .sk-karte.aktiv{border-color:var(--wald); box-shadow:0 0 0 3px rgba(60,74,59,.12);}
+  .sk-k-name{font-family:var(--serif); font-size:20px; color:var(--wald);}
+  .sk-k-besch{font-size:13px; color:var(--clay); margin:6px 0 8px; line-height:1.45;}
+  .sk-k-meta{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--grey);}
+  .sk-detail{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; margin-bottom:18px;}
+  .sk-kopf{display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;} .sk-kopf>div{flex:1; min-width:220px;}
+  .sk-titel{font-family:var(--serif); font-size:24px; color:var(--wald);} .sk-besch{font-size:14px; color:var(--clay); margin-top:4px; line-height:1.45;}
+  .sk-beispiele{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0;}
+  .sk-bsp{background:var(--creme); border:1px solid var(--line); border-radius:999px; padding:7px 12px; font-size:13px; color:var(--ink); cursor:pointer; font-family:var(--sans);}
+  .sk-bsp:hover{border-color:var(--wald-hell);}
+  .sk-canvas{display:block; width:100%; height:400px; border:1px solid var(--line); border-radius:14px; background:var(--creme);}
+  .sk-lauf-kopf{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .sk-lauf-kopf b{font-family:var(--serif); font-size:17px; color:var(--wald);} .sk-lauf-kopf small{color:var(--grey); font-size:12px;} .sk-lauf-kopf .iconbtn{margin-left:auto;}
+  .sk-schritte{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px;}
+  .sk-schritt{font-size:12.5px; background:var(--creme); border:1px solid var(--line); border-radius:10px; padding:5px 9px;} .sk-schritt i{font-style:normal; color:var(--grey); font-size:11px;}
+  .sk-schritt.frage{border-color:var(--amber);} .sk-schritt.fertig{border-color:var(--wald-hell);} .sk-schritt.fehler,.sk-schritt.abbruch{border-color:#E5C4BB;}
+  .sk-pfeil{color:var(--grey);}
+  .tag.offen{background:#FBEFD9; color:#8a5a1a;}
+
   /* ---- Rollen-Katalog ---- */
   .rollen-chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
   .rolle-karte{margin-bottom:12px;}
@@ -299,6 +321,7 @@ ${chatWidgetCss}
   <div class="tab" data-v="reservierungen">Reservierungen</div>
   <div class="tab" data-v="meine-schichten">Meine Schichten</div>
   <div class="tab" data-v="meine-zeiten">Meine Zeiten</div>
+  <div class="tab" data-v="skills">Skills</div>
   <div class="tab" data-v="karte">Karte</div>
   <div class="tab" data-v="schichtplan">Schichtplan</div>
   <div class="tab" data-v="auswertung">Auswertung</div>
@@ -442,6 +465,23 @@ ${chatWidgetCss}
     </div>
   </section>
 
+  <!-- ===== VIEW: SKILLS (Flows aus Actors, aus dem Chat startbar) ===== -->
+  <section class="view" id="v-skills">
+    <div class="sec-title">Skills</div>
+    <p class="hint">Abläufe, die du direkt im Chat startest – einfach hinschreiben, was du brauchst, avenVictorio führt dich durch. Jeder Skill ist ein Flow aus Actors: manche denken mit KI, manche sind fester Code.</p>
+    <div class="sk-liste" id="skListe"><div class="empty">lädt …</div></div>
+    <div class="sk-detail" id="skDetail" style="display:none">
+      <div class="sk-kopf">
+        <div><div class="sk-titel" id="skTitel"></div><div class="sk-besch" id="skBesch"></div></div>
+        <button class="ok" id="skStart">Im Chat starten</button>
+      </div>
+      <div class="sk-beispiele" id="skBeispiele"></div>
+      <iframe class="sk-canvas" id="skCanvas" title="Flow-Graph"></iframe>
+    </div>
+    <div class="sec-title" style="font-size:20px">Läufe</div>
+    <div id="skLaeufe"><div class="empty">lädt …</div></div>
+  </section>
+
   <!-- ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== -->
   <section class="view" id="v-meine-schichten">
     <div class="sec-title">Meine Schichten</div>
@@ -570,6 +610,7 @@ function aktiviere(v){
   if(v==="reservierungen") loadRes();
   if(v==="meine-schichten") loadMs();
   if(v==="meine-zeiten") loadMz();
+  if(v==="skills") loadSkills();
   if(v==="karte") loadKarte();
   if(v==="schichtplan") loadSp();
   if(v==="auswertung") loadReport();
@@ -581,9 +622,9 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>akti
 
 // Tabs folgen den Fähigkeiten der Rolle; Basis-Tabs (Meine Schichten/Zeiten) hat jeder.
 const TAB_CAPS={heute:"auswertung",reservierungen:"reservierungen",schichtplan:"schichtplan",
-  "meine-schichten":"","meine-zeiten":"",karte:"karte.admin",
+  "meine-schichten":"","meine-zeiten":"",skills:"",karte:"karte.admin",
   auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin",rollen:"team.admin"};
-const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","karte","auswertung","ablaeufe","team","rollen"];
+const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","skills","karte","auswertung","ablaeufe","team","rollen"];
 const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
@@ -1158,8 +1199,59 @@ function liveEreignis(d){
     case "ablauf": if(activeView==="ablaeufe") aktualisiereView(activeView); return;
     case "team": if(["team","rollen","schichtplan"].includes(activeView)) aktualisiereView(activeView); chatWidget.ereignis(d); return;
     case "karte": if(activeView==="karte") aktualisiereView(activeView); return;
+    case "skills": if(activeView==="skills") loadSkLaeufe(); return;
   }
 }
+
+/* ===== VIEW: SKILLS (Flow-Katalog, Canvas im iframe, Läufe live) ===== */
+let SK_FLOWS=[], skAktiv=null, SK_LAEUFE=[];
+async function loadSkills(){
+  SK_FLOWS=await fetch("/api/skills").then(x=>x.json());
+  if(!skAktiv&&SK_FLOWS.length) skAktiv=SK_FLOWS[0].id;
+  renderSkills(); await loadSkLaeufe();
+}
+function renderSkills(){
+  $("skListe").innerHTML=SK_FLOWS.map(f=>'<button class="sk-karte'+(f.id===skAktiv?" aktiv":"")+'" data-sk="'+f.id+'">'+
+    '<div class="sk-k-name">'+esc(f.name)+'</div><div class="sk-k-besch">'+esc(f.beschreibung)+'</div>'+
+    '<div class="sk-k-meta">'+f.actors.length+' Actors · '+f.actors.filter(a=>a.art==="ki").length+'× KI</div></button>').join("")||'<div class="empty">Noch keine Skills</div>';
+  const f=SK_FLOWS.find(x=>x.id===skAktiv), d=$("skDetail");
+  if(!f){ d.style.display="none"; return; }
+  d.style.display="";
+  $("skTitel").textContent=f.name; $("skBesch").textContent=f.beschreibung;
+  $("skBeispiele").innerHTML=f.beispiele.map(b=>'<button class="sk-bsp" data-skbsp="'+esc(b)+'">„'+esc(b)+'“</button>').join("");
+  const src="/skills-canvas?flow="+encodeURIComponent(f.id);
+  if($("skCanvas").getAttribute("src")!==src) $("skCanvas").setAttribute("src",src); else skMarkiere();
+}
+async function loadSkLaeufe(){ SK_LAEUFE=await fetch("/api/skills/laeufe").then(x=>x.json()); renderSkLaeufe(); skMarkiere(); }
+const SK_STATUS={laeuft:["Läuft","in"],wartet:["Wartet auf Antwort","offen"],fertig:["Fertig","in"],abgebrochen:["Abgebrochen","out"],fehler:["Fehler","out"]};
+function renderSkLaeufe(){
+  const liste=SK_LAEUFE.filter(l=>!skAktiv||l.flow===skAktiv);
+  $("skLaeufe").innerHTML=liste.length?liste.map(l=>{
+    const f=SK_FLOWS.find(x=>x.id===l.flow), st=SK_STATUS[l.status]||[l.status,""];
+    return '<div class="card sk-lauf"><div class="sk-lauf-kopf"><b>'+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
+      '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.erstellt).toISOString().slice(0,10))+' '+hm(l.erstellt)+'</small>'+
+      ((l.status==="laeuft"||l.status==="wartet")?'<button class="iconbtn del" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</div>'+
+      '<div class="sk-schritte">'+l.schritte.map(s=>{ const a=f&&f.actors.find(x=>x.id===s.actor);
+        return '<span class="sk-schritt '+s.art+'" title="'+esc(JSON.stringify(s.ausgabe)).slice(0,300)+'">'+esc(a?a.name:s.actor)+' <i>'+s.art+' · '+Math.round(s.dauer_ms)+' ms</i></span>'; }).join('<span class="sk-pfeil">›</span>')+'</div></div>';
+  }).join(""):'<div class="empty">Noch keine Läufe – starte den Skill im Chat.</div>';
+}
+// Aktuellen Actor des jüngsten Laufs im Canvas hervorheben.
+function skMarkiere(){
+  const l=SK_LAEUFE.find(x=>x.flow===skAktiv), fr=$("skCanvas");
+  if(fr&&fr.contentWindow) fr.contentWindow.postMessage({typ:"markiere",actor:l&&(l.status==="laeuft"||l.status==="wartet")?l.aktueller_actor:null,status:l?l.status:null},"*");
+}
+$("skListe").addEventListener("click",e=>{ const b=e.target.closest("[data-sk]"); if(b){ skAktiv=b.dataset.sk; renderSkills(); renderSkLaeufe(); } });
+$("skDetail").addEventListener("click",async e=>{
+  const bsp=e.target.closest("[data-skbsp]");
+  if(!bsp&&e.target.id!=="skStart") return;
+  const f=SK_FLOWS.find(x=>x.id===skAktiv); if(!f) return;
+  const text=bsp?bsp.dataset.skbsp:(f.beispiele[0]||f.name);
+  const r=await fetch("/api/skills/"+encodeURIComponent(f.id)+"/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+  if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+  chatWidget.oeffnen();
+});
+$("skLaeufe").addEventListener("click",async e=>{ const b=e.target.closest("[data-skabbruch]"); if(!b) return; await fetch("/api/skills/laeufe/"+b.dataset.skabbruch,{method:"DELETE"}); loadSkLaeufe(); });
+$("skCanvas").addEventListener("load",skMarkiere);
 
 /* ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== */
 async function loadMs(){
