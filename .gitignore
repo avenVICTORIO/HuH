@@ -3,9 +3,3 @@ data/
 *.log
 .DS_Store
 
-# Tischplan-App (Svelte): Build-Artefakte & Testausgaben – Quellcode wird committet,
-# die ausgelieferte Datei liegt als public/tischplan.html vor.
-tischplan/dist-file/
-tischplan/**/.vite-build/
-tischplan/test-results/
-tischplan/playwright-report/

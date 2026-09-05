@@ -60,6 +60,19 @@ if (DATABASE_URL) {
   const { PGlite } = await import("@electric-sql/pglite");
   const g = globalThis as { __huh_pg?: InstanceType<typeof PGlite> };
   const pg = (g.__huh_pg ??= new PGlite("data/pg"));
+  // Sauber schließen, wenn der Prozess beendet wird (SIGTERM/SIGINT): ohne close()
+  // bleibt das WAL in einem Zustand, den PGlite beim nächsten Start nicht mehr
+  // wiederherstellen kann („could not locate a valid checkpoint record“).
+  const gh = globalThis as { __huh_pg_shutdown?: boolean };
+  if (!gh.__huh_pg_shutdown) {
+    gh.__huh_pg_shutdown = true;
+    for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+      process.on(sig, async () => {
+        try { await pg.close(); } catch {}
+        process.exit(0);
+      });
+    }
+  }
   roh = async (text, params) => {
     const res = await pg.query<Zeile>(nummeriert(text), params as never[]);
     return { rows: res.rows, changes: res.affectedRows ?? res.rows.length };
