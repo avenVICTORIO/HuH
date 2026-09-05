@@ -76,7 +76,7 @@ const fuss = () => /* html */ `
       <span class="rechts">
         <a href="/impressum">Impressum</a>
         <a href="/datenschutz">Datenschutz</a>
-        <a href="/terminal">Team-Login</a>
+        <a href="/app">Team-Login</a>
       </span>
     </div>
   </div>

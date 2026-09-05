@@ -53,6 +53,12 @@ const nurAuswertung = mitCap("auswertung");
 const nurAblaeufe = mitCap("ablaeufe.admin");
 const nurTeamAdmin = mitCap("team.admin");
 
+/** Bereiche des Team-Bereichs – jeder unter /app/<bereich> erreichbar (Tabs in dashboard.ts). */
+const APP_BEREICHE = new Set([
+  "heute", "reservierungen", "meine-schichten", "meine-zeiten", "karte",
+  "schichtplan", "auswertung", "ablaeufe", "team",
+]);
+
 /** Dauerhafte Umleitung – hält die Links der alten Website am Leben. */
 const um = (ziel: string) => () => Response.redirect(ziel, 301);
 
@@ -388,10 +394,16 @@ const server = Bun.serve({
     "/about-4": um("/kontakt"),
     "/offene-stellen": um("/kontakt"),
 
-    // ---------------- Intern ----------------
-    "/terminal": () => html(terminalPage),
-    "/team": () => html(dashboardPage),
-    "/dashboard": um("/team"),
+    // ---------------- Intern: /app ----------------
+    // /app = Terminal (Login, Stempeln, Home) · /app/<bereich> = Team-Bereich mit eigener Adresse je Tab.
+    "/app": () => html(terminalPage),
+    "/app/": um("/app"),
+    "/app/:bereich": (req) =>
+      APP_BEREICHE.has(req.params.bereich) ? html(dashboardPage) : html(nichtGefundenPage, 404),
+    // Alte Adressen weiterleiten (Einladungslinks behalten ihre Query).
+    "/terminal": (req) => Response.redirect("/app" + new URL(req.url).search, 301),
+    "/team": um("/app/heute"),
+    "/dashboard": um("/app/heute"),
     "/logo.png": () => new Response(Bun.file("public/logo.png")),
 
     // ---- Favicons, App-Icons & Manifest (erzeugt via `bun run icons`) ----
@@ -878,7 +890,7 @@ const server = Bun.serve({
           code, m.id, Date.now(), Date.now() + 7 * 86400000,
         );
         const basis = req.headers.get("origin") ?? new URL(req.url).origin;
-        return Response.json({ code, url: `${basis}/terminal?einladung=${code}`, gueltigTage: 7 }, { status: 201 });
+        return Response.json({ code, url: `${basis}/app?einladung=${code}`, gueltigTage: 7 }, { status: 201 });
       }),
     },
 

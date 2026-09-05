@@ -283,7 +283,7 @@ ${baseCss}
     <p>Melde dich mit deinem Passkey an – Fingerabdruck, Gesicht oder Geräte-Code.</p>
     <button type="button" id="gatePasskey" style="width:100%; padding:14px; border:none; border-radius:14px; background:var(--wald); color:var(--sand-hell); font-family:var(--sans); font-size:14px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; cursor:pointer;">Mit Passkey anmelden</button>
     <div class="gate-fehler" id="gateFehler"></div>
-    <a href="/terminal">← Zum Terminal</a>
+    <a href="/app">← Zum Terminal</a>
   </div>
 </section>
 
@@ -293,7 +293,7 @@ ${baseCss}
   <div class="ttl" id="ttl">Arbeitsbereich</div>
   <code class="ankerchip" id="ankerchip" title="Adresse dieses Bereichs – so kannst du ihn genau benennen"></code>
   <div class="miniclock" id="clock">--:--:--</div>
-  <a class="term" href="/terminal">Terminal ›</a>
+  <a class="term" href="/app">Terminal ›</a>
   <button class="term" id="btnAbmelden" style="cursor:pointer; background:none; font-family:var(--sans);">Abmelden</button>
 </div>
 
@@ -563,8 +563,9 @@ function aktiviere(v){
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.v===v));
   document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
   $("v-"+v).classList.add("active");
-  history.replaceState(null,"","#"+v);
-  { const c=$("ankerchip"); if(c) c.textContent="/team#"+v; }
+  // Jeder Bereich hat seine eigene Adresse: /app/<bereich>
+  if(location.pathname!=="/app/"+v) history.pushState(null,"","/app/"+v);
+  { const c=$("ankerchip"); if(c) c.textContent="/app/"+v; }
   if(v==="heute") loadHeute();
   if(v==="reservierungen") loadRes();
   if(v==="meine-schichten") loadMs();
@@ -589,9 +590,13 @@ function starte(){
   $("ttl").textContent = cap("team.admin") ? "Team & Zeiten" : "Servus, "+(ME.vorname||ME.name);
   const erlaubt=erlaubteTabs();
   document.querySelectorAll(".tab").forEach(t=>{ t.style.display=erlaubt.includes(t.dataset.v)?"":"none"; });
-  const wunsch=location.hash.replace("#","");
+  const wunsch=bereichAusPfad();
   aktiviere(erlaubt.includes(wunsch)?wunsch:erlaubt[0]);
 }
+// Bereich aus der Adresse: /app/<bereich> (alte #-Anker werden noch verstanden).
+function bereichAusPfad(){ return (location.pathname.split("/")[2]||location.hash.replace("#","")||""); }
+// Zurück/Vor im Browser wechselt den Bereich, ohne neu zu laden.
+window.addEventListener("popstate",()=>{ if(!ME) return; const b=bereichAusPfad(); if(erlaubteTabs().includes(b)) aktiviere(b); });
 
 async function boot(){
   const r=await fetch("/api/me");
@@ -619,7 +624,7 @@ $("gatePasskey").addEventListener("click",async ()=>{
 });
 $("btnAbmelden").addEventListener("click",async ()=>{
   await fetch("/api/session",{method:"DELETE"});
-  location.href="/terminal";
+  location.href="/app";
 });
 
 /* ---- Datumsgrenzen (lokal) ---- */
