@@ -15,7 +15,6 @@ ${baseCss}
   .topbar .miniclock{font-variant-numeric:tabular-nums; font-size:15px; color:var(--clay);}
   .topbar .term{background:none; border:1px solid var(--line); color:var(--grey); border-radius:999px; padding:8px 14px; font-size:12px; text-decoration:none; letter-spacing:.08em; text-transform:uppercase; font-weight:500; font-family:var(--sans);}
   .topbar .term:hover{color:var(--wald); border-color:var(--wald-hell);}
-  .topbar .ankerchip{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--wald); background:var(--creme); border:1px solid var(--line); border-radius:6px; padding:3px 8px; letter-spacing:.03em; white-space:nowrap;}
 
   /* ---- Seitenleisten-Navigation (Desktop) / Schublade (Mobil) ---- */
   .rahmen{display:flex; align-items:flex-start; gap:10px; max-width:1160px; margin:0 auto; width:100%;}
@@ -263,7 +262,6 @@ ${baseCss}
   @media (max-width:480px){
     .topbar{padding:10px 12px; gap:8px;}
     .topbar .ttl{font-size:18px;}
-    .topbar .ankerchip{display:none;}
     .tabs{padding:12px 10px 0; gap:6px;}
     .tab{padding:9px 12px; font-size:14px;}
     .body{padding:14px 12px;}
@@ -291,7 +289,6 @@ ${baseCss}
 <div class="topbar">
   <img src="/logo.png" alt="Hand aufs Herz">
   <div class="ttl" id="ttl">Arbeitsbereich</div>
-  <code class="ankerchip" id="ankerchip" title="Adresse dieses Bereichs – so kannst du ihn genau benennen"></code>
   <div class="miniclock" id="clock">--:--:--</div>
   <a class="term" href="/app">Terminal ›</a>
   <button class="term" id="btnAbmelden" style="cursor:pointer; background:none; font-family:var(--sans);">Abmelden</button>
@@ -565,7 +562,8 @@ function aktiviere(v){
   $("v-"+v).classList.add("active");
   // Jeder Bereich hat seine eigene Adresse: /app/<bereich>
   if(location.pathname!=="/app/"+v) history.pushState(null,"","/app/"+v);
-  { const c=$("ankerchip"); if(c) c.textContent="/app/"+v; }
+  // Titel neben dem Logo = aktueller Bereich (Name wie im Tab).
+  { const t=document.querySelector('.tab[data-v="'+v+'"]'); if(t) $("ttl").textContent=t.textContent.trim(); }
   if(v==="heute") loadHeute();
   if(v==="reservierungen") loadRes();
   if(v==="meine-schichten") loadMs();
@@ -587,7 +585,6 @@ const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
   $("gate").style.display="none"; $("app").style.display="";
-  $("ttl").textContent = cap("team.admin") ? "Team & Zeiten" : "Servus, "+(ME.vorname||ME.name);
   const erlaubt=erlaubteTabs();
   document.querySelectorAll(".tab").forEach(t=>{ t.style.display=erlaubt.includes(t.dataset.v)?"":"none"; });
   const wunsch=bereichAusPfad();
