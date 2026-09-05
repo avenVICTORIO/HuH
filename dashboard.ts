@@ -1151,7 +1151,7 @@ const VIEW_LADER={heute:()=>loadHeute(),reservierungen:()=>loadRes(),"meine-schi
 function aktualisiereView(v){ const f=VIEW_LADER[v]; if(f) f(); }
 function liveEreignis(d){
   switch(d.typ){
-    case "chat.nachricht": case "chat.geloescht": return chatWidget.ereignis(d);
+    case "chat.nachricht": case "chat.geloescht": case "chat.tippt": return chatWidget.ereignis(d);
     case "reservierungen": if(activeView==="reservierungen"||activeView==="heute") aktualisiereView(activeView); return;
     case "zeiten": if(["heute","meine-zeiten","auswertung"].includes(activeView)) aktualisiereView(activeView); return;
     case "schichten": if(["meine-schichten","schichtplan"].includes(activeView)) aktualisiereView(activeView); return;
