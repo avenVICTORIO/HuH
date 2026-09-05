@@ -116,9 +116,6 @@ ${baseCss}
   .iconbtn.edit{color:var(--wald);} .iconbtn.del{color:var(--rot);}
   .rowinput{padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px;}
   .rowinput.nm{flex:1; min-width:100px;} .rowinput.rl{width:130px;} .rowinput.pn{width:70px; letter-spacing:2px;}
-  .rowinput.code{width:100px;} .rowinput.pnr{width:110px; font-variant-numeric:tabular-nums;} .rowinput.soll{width:74px; font-variant-numeric:tabular-nums;}
-  .miniform input.code{width:110px;} .miniform input.pnr{width:120px; font-variant-numeric:tabular-nums;} .miniform input.soll{width:84px; font-variant-numeric:tabular-nums;}
-  .soll{font-variant-numeric:tabular-nums; color:var(--wald); font-size:13px; white-space:nowrap;}
   .hint{font-size:13px; color:var(--grey); margin:2px 0 10px; line-height:1.5;}
 
   /* ---- PIN-Gate ---- */
@@ -348,6 +345,7 @@ ${baseCss}
   <div class="tab" data-v="auswertung">Auswertung</div>
   <div class="tab" data-v="ablaeufe">Abläufe</div>
   <div class="tab" data-v="team">Team</div>
+  <div class="tab" data-v="rollen">Rollen</div>
 </nav>
 <div class="nav-schleier" id="navSchleier"></div>
 <button class="nav-knopf" id="navKnopf" aria-label="Navigation öffnen" aria-expanded="false" aria-controls="seitennav">
@@ -431,21 +429,21 @@ ${baseCss}
   <!-- ===== VIEW 3: TEAM ===== -->
   <section class="view" id="v-team">
     <div class="sec-title">Team verwalten</div>
-    <p class="hint">Person anlegen, dann per <b>Einladungslink</b> einladen – am Terminal richtet sie ihren Passkey ein (Fingerabdruck, Gesicht oder Geräte-Code). Zugriff kommt aus der Rolle. MA-Code, Personal-Nr. (Gastromatic) und Soll-Wochenstunden sind optional; <b>Soll leer = Abruf</b>.</p>
+    <p class="hint">Person anlegen, dann per <b>Einladungslink</b> einladen – am Terminal richtet sie ihren Passkey ein (Fingerabdruck, Gesicht oder Geräte-Code). Was sie darf, kommt aus der Rolle (siehe <a href="/app/rollen">Rollen</a>).</p>
     <div id="teamList"><div class="empty">lädt …</div></div>
     <div class="miniform">
-      <input class="nm" id="newVorname" placeholder="Vorname" maxlength="60" autocomplete="off">
-      <input class="nm" id="newNachname" placeholder="Nachname" maxlength="60" autocomplete="off">
+      <input class="nm" id="newVorname" placeholder="Vorname *" maxlength="60" autocomplete="off" required>
+      <input class="nm" id="newNachname" placeholder="Nachname (optional)" maxlength="60" autocomplete="off">
       <select class="rl" id="newRole" style="padding:11px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; background:var(--card); font-family:var(--sans);"></select>
-      <input class="code" id="newCode" placeholder="MA-Code" maxlength="10">
-      <input class="pnr" id="newPnr" placeholder="Personal-Nr." maxlength="12" inputmode="numeric">
-      <input class="soll" id="newSoll" placeholder="Soll h" inputmode="decimal" maxlength="5">
       <button id="btnAdd">+ Hinzufügen</button>
     </div>
+  </section>
 
-    <div class="sec-title" style="font-size:20px">Rollen &amp; Berechtigungen</div>
+  <!-- ===== VIEW: ROLLEN & BERECHTIGUNGEN ===== -->
+  <section class="view" id="v-rollen">
+    <div class="sec-title">Rollen &amp; Berechtigungen</div>
     <p class="hint">Rollen sind Bündel von Fähigkeiten: Was eine Rolle darf, gilt für alle mit dieser Rolle. „Alles“ = Inhaber-Vollzugriff. Löschen geht nur, wenn keine Person die Rolle mehr trägt.</p>
-    <div id="rollenListe"></div>
+    <div id="rollenListe"><div class="empty">lädt …</div></div>
     <div class="miniform">
       <input class="rl" id="rolleNeu" placeholder="Neue Rolle (z. B. Spüler)" maxlength="40">
       <button id="btnRolleNeu">+ Anlegen</button>
@@ -638,14 +636,15 @@ function aktiviere(v){
   if(v==="auswertung") loadReport();
   if(v==="ablaeufe") loadAblaeufe();
   if(v==="team") loadTeam();
+  if(v==="rollen") ladeRollen();
 }
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>aktiviere(t.dataset.v)));
 
 // Tabs folgen den Fähigkeiten der Rolle; Basis-Tabs (Meine Schichten/Zeiten) hat jeder.
 const TAB_CAPS={heute:"auswertung",reservierungen:"reservierungen",schichtplan:"schichtplan",
   "meine-schichten":"","meine-zeiten":"",chat:"",karte:"karte.admin",
-  auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin"};
-const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","chat","karte","auswertung","ablaeufe","team"];
+  auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin",rollen:"team.admin"};
+const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","chat","karte","auswertung","ablaeufe","team","rollen"];
 const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
@@ -1598,18 +1597,12 @@ async function loadTeam(){
         '<input class="rowinput nm" id="eVorname" value="'+esc(m.vorname||"")+'" placeholder="Vorname">'+
         '<input class="rowinput nm" id="eNachname" value="'+esc(m.nachname||"")+'" placeholder="Nachname">'+
         '<select class="rowinput rl" id="eRole">'+optionen(m.role)+'</select>'+
-        '<input class="rowinput code" id="eCode" value="'+esc(m.ma_code||"")+'" placeholder="MA-Code" maxlength="10">'+
-        '<input class="rowinput pnr" id="ePnr" value="'+esc(m.personalnr||"")+'" placeholder="Personal-Nr." maxlength="12" inputmode="numeric">'+
-        '<input class="rowinput soll" id="eSoll" value="'+(m.soll_std==null?"":esc(String(m.soll_std)))+'" placeholder="Soll h" maxlength="5" inputmode="decimal">'+
         '<button class="iconbtn edit" data-save="'+m.id+'">Speichern</button>'+
         '<button class="iconbtn del" data-cancel>Abbrechen</button></div>';
     }
-    const meta=[esc(m.role)]; if(m.ma_code) meta.push(esc(m.ma_code)); if(m.personalnr) meta.push(esc(m.personalnr));
-    const soll=m.soll_std==null?"Abruf":esc(String(m.soll_std))+" h/Wo";
     const voll=(m.caps||[]).includes("*");
     const link=inviteUrls[m.id];
-    return '<div class="card row" style="flex-wrap:wrap"><div class="nm">'+esc(m.name)+'<small>'+meta.join(" · ")+'</small></div>'+
-      '<span class="soll">'+soll+'</span>'+
+    return '<div class="card row" style="flex-wrap:wrap"><div class="nm">'+esc(m.name)+'<small>'+esc(m.role)+'</small></div>'+
       (voll?'<span class="tag in">Inhaber</span>':'')+
       (m.hatPasskey?'<span class="tag in" title="Passkey eingerichtet">🔑 Passkey</span>'
                    :'<span class="tag out" title="Noch kein Passkey">ohne Passkey</span>')+
@@ -1648,8 +1641,8 @@ $("teamList").addEventListener("click",async e=>{
     return loadTeam();
   }
   if(t.dataset.save){
-    const body={vorname:$("eVorname").value.trim(),nachname:$("eNachname").value.trim(),role:$("eRole").value.trim(),
-      ma_code:$("eCode").value.trim(),personalnr:$("ePnr").value.trim(),soll_std:$("eSoll").value.trim()};
+    const body={vorname:$("eVorname").value.trim(),nachname:$("eNachname").value.trim(),role:$("eRole").value.trim()};
+    if(!body.vorname){ alert("Der Vorname ist Pflicht."); return; }
     const r=await fetch("/api/mitarbeiter/"+t.dataset.save,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
     editId=null; loadTeam();
@@ -1682,7 +1675,7 @@ $("rollenListe").addEventListener("click",async e=>{
     if(!confirm('Rolle "'+b.dataset.rolledel+'" löschen?')) return;
     const r=await fetch("/api/rollen/"+encodeURIComponent(b.dataset.rolledel),{method:"DELETE"});
     if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-    loadTeam();
+    ladeRollen();
   }
 });
 $("btnRolleNeu").addEventListener("click",async ()=>{
@@ -1692,16 +1685,15 @@ $("btnRolleNeu").addEventListener("click",async ()=>{
     headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   $("rolleNeu").value="";
-  loadTeam();
+  ladeRollen();
 });
 
 $("btnAdd").addEventListener("click",async ()=>{
-  const body={vorname:$("newVorname").value.trim(),nachname:$("newNachname").value.trim(),role:$("newRole").value.trim(),
-    ma_code:$("newCode").value.trim(),personalnr:$("newPnr").value.trim(),soll_std:$("newSoll").value.trim()};
-  if(!body.vorname||!body.role){ alert("Vorname und Rolle sind Pflicht"); return; }
+  const body={vorname:$("newVorname").value.trim(),nachname:$("newNachname").value.trim(),role:$("newRole").value.trim()};
+  if(!body.vorname||!body.role){ alert("Vorname und Rolle sind Pflicht – der Nachname ist optional."); $("newVorname").focus(); return; }
   const r=await fetch("/api/mitarbeiter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
-  $("newVorname").value=""; $("newNachname").value=""; $("newCode").value=""; $("newPnr").value=""; $("newSoll").value=""; loadTeam();
+  $("newVorname").value=""; $("newNachname").value=""; loadTeam();
 });
 
 /* ===== ABLÄUFE / CHECKLISTEN (Admin) ===== */
