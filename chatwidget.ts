@@ -53,6 +53,11 @@ export const chatWidgetCss = /* css */ `
   .msg.eigene .msg-meta{color:rgba(255,255,255,.72);}
   .msg-meta b{color:var(--wald); font-weight:600;} .msg.eigene .msg-meta b{color:#fff;}
   .msg-text{font-size:15px; line-height:1.45; white-space:pre-wrap; word-break:break-word;}
+  .msg.ki{background:#F3EFE6; border-color:#E2D9C6;}
+  .msg.ki .msg-meta b{color:var(--amber);}
+  .msg.ki .msg-meta b::before{content:"✦ "; font-size:10px;}
+  .msg.tippt .msg-text::after{content:"▍"; color:var(--amber); animation:chat-blink 1s steps(1) infinite;}
+  @keyframes chat-blink{50%{opacity:0;}}
   .msg-del{margin-left:auto; background:none; border:none; color:inherit; opacity:.45; cursor:pointer; font-size:14px; line-height:1; padding:0 2px;}
   .msg:hover .msg-del{opacity:.9;}
   .chat-eingabe{display:flex; gap:10px; align-items:flex-end; padding:12px; border-top:1px solid var(--line); background:var(--card);}
@@ -98,7 +103,7 @@ export const chatWidgetHtml = /* html */ `
       </div>
       <div class="chat-verlauf" id="chatVerlauf"></div>
       <form class="chat-eingabe" id="chatForm" autocomplete="off">
-        <textarea id="chatText" rows="1" maxlength="2000" placeholder="Nachricht schreiben … (Enter sendet, Shift+Enter neue Zeile)"></textarea>
+        <textarea id="chatText" rows="1" maxlength="2000" placeholder="Nachricht schreiben …"></textarea>
         <button type="submit" class="chat-senden" id="chatSendenBtn" title="Senden">➤</button>
       </form>
     </div>
@@ -117,6 +122,7 @@ window.chatWidget=(function(){
   const mobil=()=>window.innerWidth<=880;
   let me=null, admin=false, sendeWs=function(){};
   let raeume=[], aktiv=null, nachrichten=[], scrollErzwingen=false, offen=false, geladen=false;
+  let kiTippt=null; // {raum, job, text} – die KI schreibt gerade (gestreamt über den WebSocket)
 
   function init(o){ me=o.meId; admin=!!o.admin; sendeWs=o.senden||function(){}; g("chatFab").hidden=false; ladeRaeume(); }
   function aus(){ schliessen(); g("chatFab").hidden=true; raeume=[]; aktiv=null; nachrichten=[]; geladen=false; me=null; badge(0); }
@@ -130,7 +136,7 @@ window.chatWidget=(function(){
   }
   function renderRaeume(){
     g("chatRaeume").innerHTML='<div class="chat-raeume-titel">Chats</div>'+(raeume.map(r=>{
-      const v=r.letzte?((r.letzte.eigene?"Du: ":"")+r.letzte.text.replace(/\\s+/g," ")):(r.untertitel||"");
+      const v=r.letzte?((r.letzte.ki?"KI: ":r.letzte.eigene?"Du: ":"")+r.letzte.text.replace(/\\s+/g," ")):(r.untertitel||"");
       return '<button class="chat-raum'+(r.id===aktiv?" aktiv":"")+(r.ungelesen?" ungelesen":"")+'" data-raum="'+r.id+'">'+
         '<div class="cr-kopf"><span class="cr-titel">'+esc(r.titel)+'</span>'+(r.ungelesen?'<span class="cr-badge">'+r.ungelesen+'</span>':'')+'</div>'+
         '<div class="cr-unter">'+esc(v)+'</div></button>';
@@ -173,16 +179,19 @@ window.chatWidget=(function(){
   function renderVerlauf(){
     const v=g("chatVerlauf");
     const amEnde=v.scrollHeight-v.scrollTop-v.clientHeight<90;
-    if(!nachrichten.length){ v.innerHTML='<div class="chat-leer">Noch keine Nachrichten – schreib die erste.</div>'; return; }
+    const tippt=(kiTippt&&kiTippt.raum===aktiv)?kiTippt:null;
+    if(!nachrichten.length&&!tippt){ v.innerHTML='<div class="chat-leer">Noch keine Nachrichten – schreib die erste.</div>'; return; }
     let html="", tag=null;
     for(const n of nachrichten){
       const d=new Date(n.ts);
       if(d.toDateString()!==tag){ tag=d.toDateString(); html+='<div class="chat-tag"><span>'+tagLabel(d)+'</span></div>'; }
-      html+='<div class="msg'+(n.eigene?" eigene":"")+'" data-mid="'+n.id+'">'+
+      html+='<div class="msg'+(n.eigene?" eigene":"")+(n.ki?" ki":"")+'" data-mid="'+n.id+'">'+
         '<div class="msg-meta"><b>'+(n.eigene?"Du":esc(n.von_name))+'</b><span>'+hm(n.ts)+'</span>'+
           ((n.eigene||admin)?'<button class="msg-del" data-del="'+n.id+'" title="Nachricht löschen">×</button>':'')+'</div>'+
         '<div class="msg-text">'+esc(n.text)+'</div></div>';
     }
+    // Die KI schreibt gerade: Blase mit dem bisherigen Text (kommt Stück für Stück über den WebSocket).
+    if(tippt) html+='<div class="msg ki tippt" data-job="'+tippt.job+'"><div class="msg-meta"><b>KI</b><span>schreibt …</span></div><div class="msg-text">'+esc(tippt.text)+'</div></div>';
     v.innerHTML=html;
     if(amEnde||scrollErzwingen){ v.scrollTop=v.scrollHeight; scrollErzwingen=false; }
   }
@@ -207,15 +216,23 @@ window.chatWidget=(function(){
       if(d.raum===aktiv){ const v=nachrichten.length; nachrichten=nachrichten.filter(n=>n.id!==d.id); if(nachrichten.length!==v) renderVerlauf(); }
       if(geladen) ladeRaeume(); return;
     }
+    if(d.typ==="chat.tippt"){
+      if(d.abbruch){ if(kiTippt&&kiTippt.job===d.job){ kiTippt=null; if(d.raum===aktiv) renderVerlauf(); } return; }
+      const neu=!kiTippt||kiTippt.job!==d.job;
+      kiTippt={raum:d.raum,job:d.job,text:d.text||""};
+      if(offen&&d.raum===aktiv){ if(neu) scrollErzwingen=true; renderVerlauf(); }
+      return;
+    }
     if(d.typ!=="chat.nachricht") return;
     const n=d.nachricht; n.eigene=(n.von===me);
+    if(d.job&&kiTippt&&kiTippt.job===d.job) kiTippt=null; // fertige KI-Antwort ersetzt die Tipp-Blase
     const imRaum=(offen&&d.raum===aktiv);
     if(imRaum){
       if(!nachrichten.some(x=>x.id===n.id)){ nachrichten.push(n); renderVerlauf(); }
       sendeWs({typ:"chat.gelesen",raum:d.raum});
     }
     const r=raeume.find(x=>x.id===d.raum);
-    if(r){ r.letzte={text:n.text,ts:n.ts,eigene:n.eigene}; if(!n.eigene&&!imRaum) r.ungelesen=(r.ungelesen||0)+1; renderRaeume(); badgeAusRaeumen(); }
+    if(r){ r.letzte={text:n.text,ts:n.ts,eigene:n.eigene,ki:!!n.ki}; if(!n.eigene&&!imRaum) r.ungelesen=(r.ungelesen||0)+1; renderRaeume(); badgeAusRaeumen(); }
     else if(!n.eigene) ladeRaeume();
   }
   function nachziehen(){ if(!me) return; ladeRaeume(); if(offen&&aktiv) hole(); }

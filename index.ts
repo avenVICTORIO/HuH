@@ -20,6 +20,7 @@ import * as res from "./reservierungen";
 import * as ablauf from "./ablaeufe";
 import * as chat from "./chat";
 import * as live from "./live";
+import * as ki from "./ki";
 import { OEFFNUNG } from "./site/info";
 import {
   CAPABILITIES,
@@ -1190,7 +1191,9 @@ const routen = {
         const b = await req.json().catch(() => null);
         const inhalt = text(b?.text, 2000);
         if (!inhalt) return Response.json({ fehler: "Bitte eine Nachricht eingeben." }, { status: 400 });
-        return Response.json(await chat.senden(ich, raum, inhalt), { status: 201 });
+        const n = await chat.senden(ich, raum, inhalt);
+        ki.antworte(raum); // läuft im Hintergrund, Antwort kommt gestreamt über den WebSocket
+        return Response.json(n, { status: 201 });
       }),
     },
     "/api/chat/nachricht/:id": {
