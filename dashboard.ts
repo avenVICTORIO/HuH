@@ -228,28 +228,7 @@ ${baseCss}
   .ms-aktiv{border-color:var(--wald-hell); box-shadow:0 0 0 3px rgba(108,127,104,.14);}
   .ms-aktiv .dur{color:var(--wald);}
 
-  /* ---- Rezepte & Gerichte ---- */
-  .ge-verf{
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
-    flex:none; width:96px; min-height:64px; border-radius:14px;
-    background:var(--creme); border:1px solid var(--line);
-  }
-  .ge-verf .z{font-family:var(--serif); font-size:26px; color:var(--wald); line-height:1;}
-  .ge-verf .l{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--clay); font-weight:600;}
-  .ge-verf.knapp .z{color:var(--rot);}
-  .komp-chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
-  .komp-chip{font-size:12px; background:var(--sand-hell); color:var(--ink); border-radius:999px; padding:4px 11px; border:none; font-family:var(--sans);}
-  .komp-chip.klick{cursor:pointer; transition:background .15s;}
-  .komp-chip.klick:hover{background:var(--sand); }
-  .rz-kopf:hover .n{color:var(--wald);}
-  .rz-schritte{margin-top:10px; background:var(--creme); border:1px solid var(--line); border-radius:12px; padding:12px 16px;}
-  .rz-schritte-titel{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; font-weight:600; color:var(--amber); margin-bottom:6px;}
-  .rz-schritte ol{margin:0; padding-left:20px; font-size:14px; color:var(--ink); line-height:1.6;}
-  .rz-schritte li{margin-bottom:4px;}
-  .zutaten-liste{margin:8px 0 0; padding:0; list-style:none; font-size:13.5px; color:var(--clay);}
-  .zutaten-liste li{padding:3px 0; border-bottom:1px dashed var(--line);}
-  .zutaten-liste li:last-child{border-bottom:0;}
-  .zutaten-liste b{color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums;}
+  /* ---- Editier-Zeilen (Karte) ---- */
   .edit-zeile{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;}
   .edit-zeile select, .edit-zeile input{padding:8px 10px; border:1px solid var(--line); border-radius:9px;
     font-size:13.5px; font-family:var(--sans); background:var(--card); color:var(--ink);}
@@ -271,36 +250,6 @@ ${baseCss}
   }
   .r-chip button{border:none; background:var(--creme); border-radius:50%; width:20px; height:20px;
     cursor:pointer; color:var(--rot); font-size:12px; line-height:1; display:grid; place-items:center;}
-
-  /* ---- Inventur: Ist/Soll-Zustand prominent links ---- */
-  .inv-menge{
-    position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:5px; flex:none; width:126px; min-height:74px;
-    background:var(--creme); border:1px solid var(--line); border-radius:14px; padding:10px 12px 10px 22px;
-  }
-  .inv-menge:focus-within{border-color:var(--wald-hell); box-shadow:0 0 0 3px rgba(108,127,104,.14);}
-  .ist-soll{display:flex; align-items:baseline; justify-content:center; gap:5px; width:100%;}
-  .ist-soll input{
-    width:2.4ch; min-width:2.4ch; max-width:5ch; text-align:center;
-    font-family:var(--serif); font-size:28px; line-height:1; color:var(--wald);
-    background:none; border:none; padding:0; font-variant-numeric:tabular-nums; -moz-appearance:textfield;
-  }
-  .ist-soll input:focus{outline:none;}
-  .ist-soll input::-webkit-outer-spin-button, .ist-soll input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
-  .ist-soll .trenner{font-family:var(--serif); font-size:19px; color:var(--line); transform:translateY(-1px);}
-  .ist-soll .sollwert{font-family:var(--serif); font-size:17px; color:var(--clay); font-variant-numeric:tabular-nums;}
-  .inv-menge .einheit{font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--clay); font-weight:600;}
-  /* Vertikaler Füllstand am linken Rand – füllt von unten nach oben. */
-  .fuellstand{
-    position:absolute; left:8px; top:9px; bottom:9px; width:5px;
-    border-radius:3px; background:var(--line); overflow:hidden;
-  }
-  .fuellstand i{
-    position:absolute; bottom:0; left:0; width:100%;
-    border-radius:3px; background:var(--wald-hell); transition:height .3s;
-  }
-  .inv-menge.knapp .ist-soll input{color:var(--rot);}
-  .inv-menge.knapp .fuellstand i{background:var(--rot);}
 
   /* ---- Meine Zeiten ---- */
   .mz-datum{font-family:var(--serif); font-size:17px; color:var(--clay); min-width:110px;}
@@ -354,8 +303,6 @@ ${baseCss}
   <div class="tab" data-v="reservierungen">Reservierungen</div>
   <div class="tab" data-v="meine-schichten">Meine Schichten</div>
   <div class="tab" data-v="meine-zeiten">Meine Zeiten</div>
-  <div class="tab" data-v="inventur">Inventur</div>
-  <div class="tab" data-v="rezepte">Rezepte</div>
   <div class="tab" data-v="karte">Karte</div>
   <div class="tab" data-v="schichtplan">Schichtplan</div>
   <div class="tab" data-v="auswertung">Auswertung</div>
@@ -498,26 +445,6 @@ ${baseCss}
     </div>
   </section>
 
-  <!-- ===== VIEW: REZEPTE & GERICHTE ===== -->
-  <section class="view" id="v-rezepte">
-    <div class="sec-title">Gerichte auf der Karte</div>
-    <p class="hint">
-      Jedes Gericht besteht aus Rezept-Komponenten; deren Zutaten hängen am Inventar.
-      „Verkauft“ bucht die Zutaten automatisch vom Bestand ab.
-    </p>
-    <div id="geListe"><div class="empty">lädt …</div></div>
-    <div class="res-akt" id="geNeuKnopf" style="display:none; margin-bottom:26px">
-      <button class="ok" data-geneu>+ Neues Gericht</button>
-    </div>
-
-    <div class="sec-title" style="font-size:20px">Rezepte (Komponenten)</div>
-    <p class="hint">Knödel, Soßen, Salate – ein Ansatz ergibt mehrere Portionen, die Zutatenmengen gelten pro Ansatz.</p>
-    <div id="rzListe"><div class="empty">lädt …</div></div>
-    <div class="res-akt" id="rzNeuKnopf" style="display:none">
-      <button class="ok" data-rzneu>+ Neues Rezept</button>
-    </div>
-  </section>
-
   <!-- ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== -->
   <section class="view" id="v-meine-schichten">
     <div class="sec-title">Meine Schichten</div>
@@ -568,33 +495,6 @@ ${baseCss}
       <div class="res-akt" style="margin-top:10px"><button class="ok" id="btnRegelNeu">+ Regel anlegen</button></div>
     </div>
 
-  </section>
-
-  <!-- ===== VIEW: INVENTUR ===== -->
-  <section class="view" id="v-inventur">
-    <div class="sec-title">Inventur</div>
-    <div class="ranges" id="invBereiche">
-      <div class="range active" data-inv="alle">Alles</div>
-      <div class="range" data-inv="kueche">Küche</div>
-      <div class="range" data-inv="bar">Bar</div>
-      <div class="range" data-inv="keller">Keller</div>
-      <div class="range" data-inv="nachbestellen" style="color:var(--rot); border-color:#E5C4BB;">Nachbestellen</div>
-    </div>
-    <div id="invList"><div class="empty">lädt …</div></div>
-
-    <div id="invAdminNeu">
-    <div class="sec-title" style="font-size:20px">Neuer Artikel</div>
-    <div class="miniform">
-      <select id="invNeuBereich" class="rowinput" style="padding:11px 12px; border-radius:10px; font-size:15px; background:var(--card);">
-        <option value="kueche">Küche</option><option value="bar">Bar</option><option value="keller">Keller</option>
-      </select>
-      <input class="nm" id="invNeuName" placeholder="Artikel (z. B. Kartoffeln)" maxlength="120">
-      <input class="pn" id="invNeuMenge" type="number" min="0" step="0.5" placeholder="Menge">
-      <input class="rl" id="invNeuEinheit" placeholder="Einheit (kg, Flaschen …)" maxlength="24" style="width:170px">
-      <input class="pn" id="invNeuSoll" type="number" min="0" step="0.5" placeholder="Soll">
-      <button id="btnInvNeu">+ Anlegen</button>
-    </div>
-    </div>
   </section>
 
   <!-- ===== VIEW: MEINE ZEITEN / ZEITEN (Admin) ===== -->
@@ -669,8 +569,6 @@ function aktiviere(v){
   if(v==="reservierungen") loadRes();
   if(v==="meine-schichten") loadMs();
   if(v==="meine-zeiten") loadMz();
-  if(v==="inventur") loadInventur();
-  if(v==="rezepte") loadKueche();
   if(v==="karte") loadKarte();
   if(v==="schichtplan") loadSp();
   if(v==="auswertung") loadReport();
@@ -681,9 +579,9 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>akti
 
 // Tabs folgen den Fähigkeiten der Rolle; Basis-Tabs (Meine Schichten/Zeiten) hat jeder.
 const TAB_CAPS={heute:"auswertung",reservierungen:"reservierungen",schichtplan:"schichtplan",
-  "meine-schichten":"","meine-zeiten":"",inventur:"inventur",rezepte:"rezepte",karte:"karte.admin",
+  "meine-schichten":"","meine-zeiten":"",karte:"karte.admin",
   auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin"};
-const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","inventur","rezepte","karte","auswertung","ablaeufe","team"];
+const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","karte","auswertung","ablaeufe","team"];
 const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
@@ -1095,7 +993,6 @@ function ktPosZeile(p){
   return '<div class="kt-pos'+(p.aktiv?"":" kt-aus")+'" data-ktpid="'+p.id+'">'+
     '<div class="edit-zeile" style="margin-bottom:'+(offen?'6px':'4px')+'">'+
       '<span class="regel-griff" draggable="true" data-ktpgriff="'+p.id+'" title="Position sortieren">⠿</span>'+
-      (p.gericht_id?'<span title="Mit der Küche verknüpft – Name/Preis syncen, Verfügbarkeit steuert »heute aus«" style="color:var(--wald); font-size:13px">⛓</span>':'')+
       '<input data-ktpname="'+p.id+'" value="'+esc(p.name)+'" style="flex:1; min-width:160px">'+
       '<input data-ktppreise="'+p.id+'" value="'+esc(p.preise||"")+'" placeholder="Preis(e)" style="width:100px">'+
       '<label style="font-size:11px; color:var(--grey); display:flex; align-items:center; gap:4px">'+
@@ -1111,10 +1008,6 @@ function ktPosZeile(p){
       '<input data-ktpoption="'+p.id+'" value="'+esc(p.option||"")+'" placeholder="Option (z. B. vegan, ohne Feta − 2,5 €)" style="flex:1; min-width:180px">'+
       ["v","vg","gf"].map(t=>'<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktptag="'+p.id+'" value="'+t+'"'+((p.tags||"").split(",").includes(t)?" checked":"")+'> '+t.toUpperCase()+'</label>').join("")+
       '<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktpstern="'+p.id+'"'+(p.stern?" checked":"")+'> * Wild</label>'+
-      '<select data-ktpgericht="'+p.id+'" title="Mit Küchen-Gericht verknüpfen" style="min-width:170px">'+
-        '<option value="">– keine Küche –</option>'+
-        KT.gerichte.map(g=>'<option value="'+g.id+'"'+(g.id===p.gericht_id?" selected":"")+'>⛓ '+esc(g.name)+'</option>').join("")+
-      '</select>'+
     '</div>':'')+
   '</div>';
 }
@@ -1131,7 +1024,6 @@ function ktPosLesen(p){
     option:ktPosEdit===id?val("ktpoption"):p.option,
     tags:ktPosEdit===id?tags:(p.tags||""),
     stern:ktPosEdit===id?(chk("ktpstern")?1:0):p.stern,
-    gericht_id:ktPosEdit===id?(val("ktpgericht")||null):p.gericht_id,
     aktiv:chk("ktpaktiv")?1:0,
   };
 }
@@ -1232,196 +1124,6 @@ $("btnKtGruppe").addEventListener("click",async ()=>{
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   $("ktNeuTitel").value=""; $("ktNeuSpalten").value="";
   loadKarte();
-});
-
-/* ===== VIEW: REZEPTE & GERICHTE (Team liest + bucht, Admin pflegt) ===== */
-let REZEPTE=[], GERICHTE=[], INV_ALLE=[];
-let geEdit=null, rzEdit=null; // {id|null, komponenten:[]} / {id|null, zutaten:[]}
-let rzDetail=null; // aufgeklapptes Rezept (Zubereitung)
-
-async function loadKueche(){
-  const laden=[fetch("/api/rezepte").then(x=>x.json()), fetch("/api/gerichte").then(x=>x.json())];
-  if(cap("rezepte.admin")) laden.push(fetch("/api/inventar").then(x=>x.json()));
-  const [rz,ge,inv]=await Promise.all(laden);
-  REZEPTE=rz; GERICHTE=ge; if(inv) INV_ALLE=inv;
-  $("geNeuKnopf").style.display=cap("rezepte.admin")&&!geEdit?"":"none";
-  $("rzNeuKnopf").style.display=cap("rezepte.admin")&&!rzEdit?"":"none";
-  renderGerichte(); renderRezepte();
-}
-
-const rezeptOpt=(sel)=>REZEPTE.map(r=>'<option value="'+r.id+'"'+(r.id===sel?" selected":"")+'>'+esc(r.name)+'</option>').join("");
-const invOpt=(sel)=>INV_ALLE.map(i=>'<option value="'+i.id+'"'+(i.id===sel?" selected":"")+'>'+esc(i.name)+' ('+esc(i.einheit)+')</option>').join("");
-
-function renderGerichte(){
-  let html=GERICHTE.map(g=>{
-    if(geEdit && geEdit.id===g.id) return geEditKarte(g);
-    const knapp=g.verfuegbar!=null && g.verfuegbar<10;
-    return '<div class="card row">'+
-      '<div class="ge-verf'+(knapp?" knapp":"")+'"><span class="z">'+(g.verfuegbar??"–")+'</span><span class="l">Portionen</span></div>'+
-      '<div class="res-info"><div class="n">'+esc(g.name)+(g.preis?' <small style="color:var(--clay)">'+esc(g.preis)+' €</small>':'')+
-        (g.aufKarte?' <span class="tag in" title="Mit der Website-Karte verknüpft">⛓ Karte</span>':'')+'</div>'+
-        (g.engpass?'<small>Engpass: '+esc(g.engpass)+'</small>':'<small class="notiz">Noch keine Rezepte hinterlegt</small>')+
-        '<div class="komp-chips">'+g.komponenten.map(k=>'<button class="komp-chip klick" data-rzsprung="'+k.rezept_id+'" title="Zum Rezept springen">'+esc(k.rezept)+(k.portionen!==1?' ×'+k.portionen:'')+' ↓</button>').join("")+'</div>'+
-      '</div>'+
-      '<div class="res-akt">'+
-        (g.komponenten.length?'<button class="ok" data-gekochen="'+g.id+'">1× verkauft</button>':'')+
-        (cap("rezepte.admin")?'<button data-geedit="'+g.id+'">Bearbeiten</button>'+
-        '<button class="no" data-gedel="'+g.id+'">Löschen</button>':'')+
-      '</div></div>';
-  }).join("");
-  if(geEdit && !geEdit.id) html+=geEditKarte(null);
-  $("geListe").innerHTML=html||'<div class="empty">Noch keine Gerichte angelegt</div>';
-}
-
-function geEditKarte(g){
-  return '<div class="card regel-karte" id="geEditKarte">'+
-    '<div class="edit-zeile">'+
-      '<input id="geName" placeholder="Gericht (wie auf der Karte)" value="'+esc(g?g.name:"")+'" style="flex:1; min-width:180px">'+
-      '<input id="gePreis" placeholder="Preis (z. B. 17,0)" value="'+esc(g&&g.preis?g.preis:"")+'" style="width:120px">'+
-    '</div>'+
-    geEdit.komponenten.map((k,i)=>
-      '<div class="edit-zeile">'+
-        '<select data-gekrz="'+i+'" style="min-width:190px">'+rezeptOpt(k.rezept_id)+'</select>'+
-        '<input type="number" data-gekp="'+i+'" value="'+k.portionen+'" min="0.5" step="0.5" style="width:80px" title="Portionen">'+
-        '<span style="font-size:12px; color:var(--grey)">Portion(en)</span>'+
-        '<button class="weg" data-gekweg="'+i+'">×</button>'+
-      '</div>').join("")+
-    '<div class="res-akt" style="margin-top:8px">'+
-      '<button data-gekplus>+ Komponente</button>'+
-      '<button class="ok" data-gesave>Speichern</button>'+
-      '<button data-gecancel>Abbrechen</button>'+
-    '</div></div>';
-}
-
-function renderRezepte(){
-  let html=REZEPTE.map(r=>{
-    if(rzEdit && rzEdit.id===r.id) return rzEditKarte(r);
-    const offen=rzDetail===r.id;
-    const schritte=(r.zubereitung||"").split("\\n").map(s=>s.trim()).filter(Boolean);
-    return '<div class="card row" data-rzanker="'+r.id+'" style="align-items:flex-start'+(offen?'; border-color:var(--wald-hell)':'')+'">'+
-      '<div class="res-info rz-kopf" data-rzauf="'+r.id+'" title="Für die Zubereitung aufklappen" style="cursor:pointer">'+
-        '<div class="n">'+(offen?"▾ ":"▸ ")+esc(r.name)+' <small style="color:var(--clay)">Ansatz ergibt '+r.ergibt+' Portionen</small></div>'+
-        (r.notiz?'<small class="notiz">„'+esc(r.notiz)+'“</small>':'')+
-        '<ul class="zutaten-liste">'+r.zutaten.map(z=>'<li><b>'+z.menge+' '+esc(z.einheit)+'</b> '+esc(z.zutat)+'</li>').join("")+
-        (r.zutaten.length?'':'<li style="font-style:italic">noch keine Zutaten</li>')+'</ul>'+
-        (offen?'<div class="rz-schritte"><div class="rz-schritte-titel">Zubereitung</div>'+
-          (schritte.length
-            ?'<ol>'+schritte.map(s=>'<li>'+esc(s)+'</li>').join("")+'</ol>'
-            :'<p style="font-style:italic; color:var(--grey); margin:6px 0 0">Noch keine Anleitung hinterlegt'+(cap("rezepte.admin")?' – über „Bearbeiten“ ergänzen.':'.')+'</p>')+
-        '</div>':'')+
-      '</div>'+
-      (cap("rezepte.admin")?'<div class="res-akt">'+
-        '<button data-rzedit="'+r.id+'">Bearbeiten</button>'+
-        '<button class="no" data-rzdel="'+r.id+'">Löschen</button>'+
-      '</div>':'')+
-    '</div>';
-  }).join("");
-  if(rzEdit && !rzEdit.id) html+=rzEditKarte(null);
-  $("rzListe").innerHTML=html||'<div class="empty">Noch keine Rezepte angelegt</div>';
-}
-
-function rzEditKarte(r){
-  return '<div class="card regel-karte" id="rzEditKarte">'+
-    '<div class="edit-zeile">'+
-      '<input id="rzName" placeholder="Rezeptname (z. B. Pilz-Rahmsoße)" value="'+esc(r?r.name:"")+'" style="flex:1; min-width:180px">'+
-      '<span style="font-size:12px; color:var(--grey)">ergibt</span>'+
-      '<input type="number" id="rzErgibt" value="'+(r?r.ergibt:20)+'" min="1" max="100" style="width:70px">'+
-      '<span style="font-size:12px; color:var(--grey)">Portionen</span>'+
-    '</div>'+
-    '<div class="edit-zeile"><input id="rzNotiz" placeholder="Notiz (optional)" value="'+esc(r&&r.notiz?r.notiz:"")+'" style="flex:1"></div>'+
-    '<div class="edit-zeile"><textarea id="rzZubereitung" placeholder="Zubereitung – ein Schritt pro Zeile" '+
-      'style="flex:1; min-height:110px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:13.5px; font-family:var(--sans); background:var(--card); color:var(--ink); resize:vertical">'+
-      esc(r&&r.zubereitung?r.zubereitung:"")+'</textarea></div>'+
-    rzEdit.zutaten.map((z,i)=>
-      '<div class="edit-zeile">'+
-        '<select data-rzzi="'+i+'" style="min-width:210px">'+invOpt(z.inventar_id)+'</select>'+
-        '<input type="number" data-rzzm="'+i+'" value="'+z.menge+'" min="0.01" step="0.05" style="width:90px" title="Menge pro Ansatz">'+
-        '<span style="font-size:12px; color:var(--grey)">pro Ansatz</span>'+
-        '<button class="weg" data-rzzweg="'+i+'">×</button>'+
-      '</div>').join("")+
-    '<div class="res-akt" style="margin-top:8px">'+
-      '<button data-rzzplus>+ Zutat</button>'+
-      '<button class="ok" data-rzsave>Speichern</button>'+
-      '<button data-rzcancel>Abbrechen</button>'+
-    '</div></div>';
-}
-
-function geEditLesen(){
-  geEdit.komponenten=geEdit.komponenten.map((k,i)=>({
-    rezept_id:document.querySelector('[data-gekrz="'+i+'"]').value,
-    portionen:Number(document.querySelector('[data-gekp="'+i+'"]').value)||1,
-  }));
-  return {name:$("geName").value.trim(), preis:$("gePreis").value.trim(), komponenten:geEdit.komponenten};
-}
-function rzEditLesen(){
-  rzEdit.zutaten=rzEdit.zutaten.map((z,i)=>({
-    inventar_id:document.querySelector('[data-rzzi="'+i+'"]').value,
-    menge:Number(document.querySelector('[data-rzzm="'+i+'"]').value)||0,
-  }));
-  return {name:$("rzName").value.trim(), ergibt:Number($("rzErgibt").value),
-    notiz:$("rzNotiz").value.trim(), zubereitung:$("rzZubereitung").value.trim(),
-    zutaten:rzEdit.zutaten};
-}
-
-document.getElementById("v-rezepte").addEventListener("click",async e=>{
-  // Rezept-Kopf klappt die Zubereitung auf/zu.
-  const kopf=e.target.closest("[data-rzauf]");
-  if(kopf && !e.target.closest("button")){
-    rzDetail=rzDetail===kopf.dataset.rzauf?null:kopf.dataset.rzauf;
-    return renderRezepte();
-  }
-  const b=e.target.closest("button"); if(!b) return;
-  const d=b.dataset;
-  if(d.rzsprung){ // Komponenten-Chip am Gericht -> Rezept aufklappen und hinscrollen
-    rzDetail=d.rzsprung; renderRezepte();
-    document.querySelector('[data-rzanker="'+d.rzsprung+'"]')?.scrollIntoView({behavior:"smooth",block:"center"});
-    return;
-  }
-
-  if(d.gekochen!=null){
-    const r=await fetch("/api/gerichte/"+d.gekochen+"/kochen",{method:"POST",
-      headers:{"Content-Type":"application/json"},body:JSON.stringify({portionen:1})});
-    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-    return loadKueche();
-  }
-
-  // ---- Gerichte (Admin) ----
-  if(d.geneu!=null){ geEdit={id:null,komponenten:[]}; return renderGerichte(); }
-  if(d.geedit){ const g=GERICHTE.find(x=>x.id===d.geedit);
-    geEdit={id:g.id,komponenten:g.komponenten.map(k=>({rezept_id:k.rezept_id,portionen:k.portionen}))};
-    return renderGerichte(); }
-  if(d.gecancel!=null){ geEdit=null; return loadKueche(); }
-  if(d.gekplus!=null){ geEditLesen(); geEdit.komponenten.push({rezept_id:REZEPTE[0]?.id,portionen:1}); return renderGerichte(); }
-  if(d.gekweg!=null){ geEditLesen(); geEdit.komponenten.splice(Number(d.gekweg),1); return renderGerichte(); }
-  if(d.gesave!=null){
-    const body=geEditLesen();
-    const r=await fetch("/api/gerichte"+(geEdit.id?"/"+geEdit.id:""),{method:geEdit.id?"PUT":"POST",
-      headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-    geEdit=null; return loadKueche();
-  }
-  if(d.gedel){ if(!confirm("Gericht löschen?")) return;
-    await fetch("/api/gerichte/"+d.gedel,{method:"DELETE"}); return loadKueche(); }
-
-  // ---- Rezepte (Admin) ----
-  if(d.rzneu!=null){ rzEdit={id:null,zutaten:[]}; return renderRezepte(); }
-  if(d.rzedit){ const r=REZEPTE.find(x=>x.id===d.rzedit);
-    rzEdit={id:r.id,zutaten:r.zutaten.map(z=>({inventar_id:z.inventar_id,menge:z.menge}))};
-    return renderRezepte(); }
-  if(d.rzcancel!=null){ rzEdit=null; return loadKueche(); }
-  if(d.rzzplus!=null){ rzEditLesen(); rzEdit.zutaten.push({inventar_id:INV_ALLE[0]?.id,menge:1}); return renderRezepte(); }
-  if(d.rzzweg!=null){ rzEditLesen(); rzEdit.zutaten.splice(Number(d.rzzweg),1); return renderRezepte(); }
-  if(d.rzsave!=null){
-    const body=rzEditLesen();
-    const r=await fetch("/api/rezepte"+(rzEdit.id?"/"+rzEdit.id:""),{method:rzEdit.id?"PUT":"POST",
-      headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-    rzEdit=null; return loadKueche();
-  }
-  if(d.rzdel){ if(!confirm("Rezept löschen?")) return;
-    const r=await fetch("/api/rezepte/"+d.rzdel,{method:"DELETE"});
-    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-    return loadKueche(); }
 });
 
 /* ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== */
@@ -1687,109 +1389,6 @@ $("btnRegelNeu").addEventListener("click",async ()=>{
   loadRegeln();
 });
 
-
-/* ===== VIEW: INVENTUR (CRUD für Küche, Bar, Keller) ===== */
-let invBereich="alle", invEditId=null, invDaten=[];
-const INV_LABEL={kueche:"Küche",bar:"Bar",keller:"Keller"};
-document.querySelectorAll("[data-inv]").forEach(b=>b.addEventListener("click",()=>{
-  document.querySelectorAll("[data-inv]").forEach(x=>x.classList.remove("active"));
-  b.classList.add("active"); invBereich=b.dataset.inv; invEditId=null; loadInventur();
-}));
-
-async function loadInventur(){
-  // Mitarbeiter zählen nur den Ist-Bestand; Artikel, Soll & Co. pflegt der Admin.
-  $("invAdminNeu").style.display=cap("inventur.admin")?"":"none";
-  const nachbestellen=invBereich==="nachbestellen";
-  const url="/api/inventar"+(invBereich==="alle"||nachbestellen?"":"?bereich="+invBereich);
-  invDaten=await fetch(url).then(x=>x.json());
-  if(nachbestellen) invDaten=invDaten.filter(a=>a.soll!=null && a.menge<a.soll);
-  if(!invDaten.length){
-    $("invList").innerHTML='<div class="empty">'+(nachbestellen
-      ?"Nichts nachzubestellen – alle Bestände sind auf Soll."
-      :"Keine Artikel in diesem Bereich")+'</div>';
-    return;
-  }
-  $("invList").innerHTML=invDaten.map((a,i)=>{
-    if(a.id===invEditId){
-      return '<div class="card row">'+
-        '<select class="rowinput" id="ivBereich" style="width:110px">'+
-          Object.entries(INV_LABEL).map(([k,l])=>'<option value="'+k+'"'+(a.bereich===k?" selected":"")+'>'+l+'</option>').join("")+
-        '</select>'+
-        '<input class="rowinput nm" id="ivName" value="'+esc(a.name)+'" placeholder="Artikel">'+
-        '<input class="rowinput pn" id="ivMenge" type="number" min="0" step="0.5" value="'+a.menge+'">'+
-        '<input class="rowinput" id="ivEinheit" value="'+esc(a.einheit)+'" style="width:110px" placeholder="Einheit">'+
-        '<input class="rowinput pn" id="ivSoll" type="number" min="0" step="0.5" value="'+(a.soll??"")+'" placeholder="Soll">'+
-        '<input class="rowinput nm" id="ivNotiz" value="'+esc(a.notiz||"")+'" placeholder="Notiz">'+
-        '<div class="res-akt"><button class="ok" data-ivsave="'+i+'">Speichern</button>'+
-        '<button data-ivcancel>Abbrechen</button></div></div>';
-    }
-    const knapp=a.soll!=null && a.menge<a.soll;
-    const anteil=a.soll>0?Math.min(100,Math.round(a.menge/a.soll*100)):100;
-    return '<div class="card row">'+
-      '<div class="inv-menge'+(knapp?" knapp":"")+'">'+
-        '<div class="ist-soll">'+
-          '<input type="number" min="0" step="0.5" data-ivmenge="'+i+'" value="'+a.menge+'" style="width:'+(String(a.menge).length+1.4)+'ch">'+
-          (a.soll!=null?'<span class="trenner">/</span><span class="sollwert">'+a.soll+'</span>':'')+
-        '</div>'+
-        '<span class="einheit">'+esc(a.einheit)+'</span>'+
-        (a.soll!=null?'<div class="fuellstand"><i style="height:'+anteil+'%"></i></div>':'')+
-      '</div>'+
-      '<div class="res-info"><div class="n">'+esc(a.name)+
-        (knapp?' <span class="pill abgesagt">Nachbestellen +'+(Math.round((a.soll-a.menge)*10)/10)+' '+esc(a.einheit)+'</span>':'')+'</div>'+
-        '<small>'+INV_LABEL[a.bereich]+(a.notiz?' · '+esc(a.notiz):'')+'</small></div>'+
-      '<div class="res-akt">'+
-        '<button class="ok" data-ivzahl="'+i+'">Speichern</button>'+
-        (cap("inventur.admin")?'<button data-ivedit="'+a.id+'">Bearbeiten</button>'+
-        '<button class="no" data-ivdel="'+a.id+'">Löschen</button>':'')+
-      '</div></div>';
-  }).join("");
-}
-
-async function invSpeichern(id,daten){
-  const r=await fetch("/api/inventar/"+id,{method:"PUT",
-    headers:{"Content-Type":"application/json"},body:JSON.stringify(daten)});
-  if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return false; }
-  return true;
-}
-
-$("invList").addEventListener("click",async e=>{
-  const b=e.target.closest("button"); if(!b) return;
-  if(b.dataset.ivedit){ invEditId=b.dataset.ivedit; return loadInventur(); }
-  if(b.dataset.ivcancel!==undefined){ invEditId=null; return loadInventur(); }
-  if(b.dataset.ivdel){
-    if(!confirm("Artikel wirklich löschen?")) return;
-    await fetch("/api/inventar/"+b.dataset.ivdel,{method:"DELETE"});
-    return loadInventur();
-  }
-  if(b.dataset.ivzahl!=null){ // Zählung: nur die Menge (darf das ganze Team)
-    const a=invDaten[Number(b.dataset.ivzahl)];
-    const menge=Number(document.querySelector('[data-ivmenge="'+b.dataset.ivzahl+'"]').value);
-    const r=await fetch("/api/inventar/"+a.id,{method:"PATCH",
-      headers:{"Content-Type":"application/json"},body:JSON.stringify({menge})});
-    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-    loadInventur();
-    return;
-  }
-  if(b.dataset.ivsave!=null){ // Voll-Bearbeitung
-    const a=invDaten[Number(b.dataset.ivsave)];
-    const daten={bereich:$("ivBereich").value, name:$("ivName").value.trim(),
-      menge:Number($("ivMenge").value), einheit:$("ivEinheit").value.trim(),
-      soll:$("ivSoll").value===""?null:Number($("ivSoll").value), notiz:$("ivNotiz").value.trim()};
-    if(await invSpeichern(a.id,daten)){ invEditId=null; loadInventur(); }
-  }
-});
-
-$("btnInvNeu").addEventListener("click",async ()=>{
-  const daten={bereich:$("invNeuBereich").value, name:$("invNeuName").value.trim(),
-    menge:Number($("invNeuMenge").value||0), einheit:$("invNeuEinheit").value.trim(),
-    soll:$("invNeuSoll").value===""?null:Number($("invNeuSoll").value)};
-  if(!daten.name||!daten.einheit){ alert("Artikel und Einheit sind Pflicht"); return; }
-  const r=await fetch("/api/inventar",{method:"POST",
-    headers:{"Content-Type":"application/json"},body:JSON.stringify(daten)});
-  if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-  $("invNeuName").value=""; $("invNeuMenge").value=""; $("invNeuEinheit").value=""; $("invNeuSoll").value="";
-  loadInventur();
-});
 
 /* ===== VIEW 3: TEAM (CRUD) + Rollen-Katalog ===== */
 let editId=null, ROLLEN=[];

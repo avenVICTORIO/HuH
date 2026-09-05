@@ -54,10 +54,6 @@ export const logoutCookie = () => `${COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; 
  */
 export const CAPABILITIES: Record<string, string> = {
   reservierungen: "Reservierungen verwalten",
-  inventur: "Inventur zählen",
-  "inventur.admin": "Inventur-Artikel & Soll pflegen",
-  rezepte: "Rezepte ansehen & Verkäufe buchen",
-  "rezepte.admin": "Rezepte & Gerichte pflegen",
   "karte.admin": "Website-Karte pflegen",
   schichtplan: "Schichtplan & Vorlage verwalten",
   "zeiten.admin": "Zeiten aller korrigieren",

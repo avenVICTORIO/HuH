@@ -17,7 +17,6 @@ import {
 } from "./site/seiten";
 import { nichtGefundenPage } from "./site/fehler";
 import * as res from "./reservierungen";
-import * as kueche from "./rezepte";
 import * as ablauf from "./ablaeufe";
 import { OEFFNUNG } from "./site/info";
 import {
@@ -47,10 +46,6 @@ const capsAusBody = (v: unknown): string[] =>
 
 // Capability-Wächter: Rollen bündeln Fähigkeiten (siehe CAPABILITIES in auth.ts).
 const nurReserv = mitCap("reservierungen");
-const nurInventur = mitCap("inventur");
-const nurInventurAdmin = mitCap("inventur.admin");
-const nurRezepte = mitCap("rezepte");
-const nurRezepteAdmin = mitCap("rezepte.admin");
 const nurKarteAdmin = mitCap("karte.admin");
 const nurSchicht = mitCap("schichtplan");
 const nurZeitenAdmin = mitCap("zeiten.admin");
@@ -62,8 +57,6 @@ const nurTeamAdmin = mitCap("team.admin");
 const um = (ziel: string) => () => Response.redirect(ziel, 301);
 
 const text = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
-
-const INV_BEREICHE = ["kueche", "bar", "keller"];
 
 /** Passt eine Person auf eine Schicht-Rolle? Wer den Schichtplan verwaltet, darf überall einspringen. */
 const rollePasst = (m: Mitarbeiter, schichtRolle: string) =>
@@ -95,10 +88,6 @@ async function kartePositionFelder(b: Record<string, unknown> | null) {
   }
   const tags = text(b.tags, 20)
     .split(",").map((t) => t.trim()).filter((t) => ["v", "vg", "gf"].includes(t)).join(",");
-  const gericht_id = text(b.gericht_id, 64) || null;
-  if (gericht_id && !(await eins("SELECT 1 AS x FROM gerichte WHERE id = ?", gericht_id))) {
-    return { fehler: "Verknüpftes Gericht nicht gefunden." } as const;
-  }
   return {
     gruppe_id,
     name,
@@ -108,39 +97,6 @@ async function kartePositionFelder(b: Record<string, unknown> | null) {
     stern: b.stern ? 1 : 0,
     preise: text(b.preise, 60) || null,
     aktiv: b.aktiv === 0 || b.aktiv === false ? 0 : 1,
-    gericht_id,
-  };
-}
-
-/** Karte -> Küche: verknüpftes Gericht übernimmt Name + Preis der Kartenposition. */
-async function gerichtAusKarteSyncen(p: { gericht_id: string | null; name: string; preise: string | null }) {
-  if (!p.gericht_id) return;
-  await lauf("UPDATE gerichte SET name = ?, preis = ? WHERE id = ?", p.name, p.preise, p.gericht_id);
-}
-
-/** Rezept-Body normalisieren (Prüfung übernimmt rezepte.ts). */
-function rezeptBody(b: Record<string, unknown> | null): kueche.NeuesRezept {
-  const zutaten = Array.isArray(b?.zutaten) ? b!.zutaten : [];
-  return {
-    name: text(b?.name, 80),
-    ergibt: Number(b?.ergibt ?? 20),
-    notiz: text(b?.notiz, 500) || null,
-    zubereitung: text(b?.zubereitung, 4000) || null,
-    zutaten: zutaten
-      .map((z: Record<string, unknown>) => ({ inventar_id: text(z?.inventar_id, 64), menge: Number(z?.menge) }))
-      .filter((z) => z.inventar_id),
-  };
-}
-
-/** Gericht-Body normalisieren. */
-function gerichtBody(b: Record<string, unknown> | null): kueche.NeuesGericht {
-  const komponenten = Array.isArray(b?.komponenten) ? b!.komponenten : [];
-  return {
-    name: text(b?.name, 80),
-    preis: text(b?.preis, 12) || null,
-    komponenten: komponenten
-      .map((k: Record<string, unknown>) => ({ rezept_id: text(k?.rezept_id, 64), portionen: Number(k?.portionen ?? 1) }))
-      .filter((k) => k.rezept_id),
   };
 }
 
@@ -277,22 +233,6 @@ function schichtFelder(b: Record<string, unknown> | null) {
     return { fehler: "Bitte Zeiten als HH:MM angeben." };
   }
   return { datum, rolle, von, bis, notiz: text(b.notiz, 300) || null };
-}
-
-/** Feldprüfung eines Inventar-Artikels. */
-function invFelder(b: Record<string, unknown> | null) {
-  if (!b) return { fehler: "Ungültige Anfrage" };
-  const bereich = text(b.bereich, 10);
-  const name = text(b.name, 120);
-  const einheit = text(b.einheit, 24);
-  const menge = Number(b.menge);
-  const soll = b.soll === "" || b.soll == null ? null : Number(b.soll);
-  if (!INV_BEREICHE.includes(bereich)) return { fehler: "Unbekannter Bereich" };
-  if (!name) return { fehler: "Bitte einen Artikelnamen angeben." };
-  if (!einheit) return { fehler: "Bitte eine Einheit angeben (z. B. kg, Flaschen)." };
-  if (!Number.isFinite(menge) || menge < 0) return { fehler: "Bitte eine gültige Menge angeben." };
-  if (soll != null && (!Number.isFinite(soll) || soll < 0)) return { fehler: "Ungültiger Sollbestand." };
-  return { bereich, name, menge, einheit, soll, notiz: text(b.notiz, 300) || null };
 }
 
 /**
@@ -634,66 +574,6 @@ const server = Bun.serve({
       if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
       return Response.json(await res.tagesUebersicht(datum));
     }),
-
-    // ---- Inventur: Team zählt Bestände, Artikel & Soll pflegt der Admin ----
-    "/api/inventar": {
-      GET: nurInventur(async (req) => {
-        const bereich = new URL(req.url).searchParams.get("bereich");
-        if (bereich && !INV_BEREICHE.includes(bereich)) {
-          return Response.json({ fehler: "Unbekannter Bereich" }, { status: 400 });
-        }
-        const rows = bereich
-          ? await alle("SELECT * FROM inventar WHERE bereich = ? ORDER BY name", bereich)
-          : await alle("SELECT * FROM inventar ORDER BY bereich, name");
-        return Response.json(rows);
-      }),
-      POST: nurInventurAdmin(async (req) => {
-        const b = await req.json().catch(() => null);
-        const daten = invFelder(b);
-        if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const zeile = { id: randomUUID(), ...daten, aktualisiert: Date.now() };
-        await lauf(
-          "INSERT INTO inventar (id, bereich, name, menge, einheit, soll, notiz, aktualisiert) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          zeile.id, zeile.bereich, zeile.name, zeile.menge, zeile.einheit, zeile.soll, zeile.notiz, zeile.aktualisiert,
-        );
-        return Response.json(zeile, { status: 201 });
-      }),
-    },
-
-    "/api/inventar/:id": {
-      // Ganzes Team: nur den gezählten Ist-Bestand aktualisieren.
-      PATCH: nurInventur(async (req) => {
-        const b = await req.json().catch(() => null);
-        const menge = Number(b?.menge);
-        if (!Number.isFinite(menge) || menge < 0) {
-          return Response.json({ fehler: "Bitte eine gültige Menge angeben." }, { status: 400 });
-        }
-        const r = await lauf(
-          "UPDATE inventar SET menge = ?, aktualisiert = ? WHERE id = ?",
-          menge, Date.now(), req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        karteInvalidieren(); // Bestand beeinflusst „heute aus“ auf der Website
-        return Response.json({ id: req.params.id, menge });
-      }),
-      // Nur Admin: Artikel umbenennen, Bereich/Einheit/Soll/Notiz ändern.
-      PUT: nurInventurAdmin(async (req) => {
-        const b = await req.json().catch(() => null);
-        const daten = invFelder(b);
-        if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const r = await lauf(
-          "UPDATE inventar SET bereich = ?, name = ?, menge = ?, einheit = ?, soll = ?, notiz = ?, aktualisiert = ? WHERE id = ?",
-          daten.bereich, daten.name, daten.menge, daten.einheit, daten.soll, daten.notiz, Date.now(), req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        return Response.json({ id: req.params.id, ...daten });
-      }),
-      DELETE: nurInventurAdmin(async (req) => {
-        const r = await lauf("DELETE FROM inventar WHERE id = ?", req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        return new Response(null, { status: 204 });
-      }),
-    },
 
     // ---- Schichtplanung (Admin, v1): Vorlage einfügen, Slots pflegen, Team zuweisen ----
     "/api/schichten": {
@@ -1170,8 +1050,7 @@ const server = Bun.serve({
     "/api/karte": nurKarteAdmin(async () => {
       const gruppen = await alle("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
       const positionen = await alle("SELECT * FROM karte_positionen ORDER BY sortierung, name");
-      const gerichte = await alle("SELECT id, name FROM gerichte ORDER BY name");
-      return Response.json({ kapitel: KAPITEL_META, gruppen, positionen, gerichte });
+      return Response.json({ kapitel: KAPITEL_META, gruppen, positionen });
     }),
 
     "/api/karte/gruppen": {
@@ -1219,33 +1098,11 @@ const server = Bun.serve({
           "SELECT MAX(sortierung) AS m FROM karte_positionen WHERE gruppe_id = ?", daten.gruppe_id,
         );
         const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
-        // Speise-Positionen bekommen automatisch ihr Küchen-Gericht (Match per Name oder neu),
-        // damit Karte und Küche gar nicht erst auseinanderlaufen. Getränke brauchen keins.
-        if (!zeile.gericht_id) {
-          const gruppe = await eins<{ kapitel: string }>(
-            "SELECT kapitel FROM karte_gruppen WHERE id = ?", zeile.gruppe_id,
-          );
-          const istSpeise = KAPITEL_META.some((k) => k.id === gruppe?.kapitel && !k.getraenk);
-          if (istSpeise) {
-            const bestehend = await eins<{ id: string }>(
-              "SELECT id FROM gerichte WHERE lower(name) = lower(?)", zeile.name,
-            );
-            if (bestehend) zeile.gericht_id = bestehend.id;
-            else {
-              zeile.gericht_id = randomUUID();
-              await lauf(
-                "INSERT INTO gerichte (id, name, preis, aktiv) VALUES (?, ?, ?, 1)",
-                zeile.gericht_id, zeile.name, zeile.preise,
-              );
-            }
-          }
-        }
         await lauf(
-          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv, gericht_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           zeile.id, zeile.gruppe_id, zeile.name, zeile.text, zeile.option, zeile.tags,
-          zeile.stern, zeile.preise, zeile.sortierung, zeile.aktiv, zeile.gericht_id,
+          zeile.stern, zeile.preise, zeile.sortierung, zeile.aktiv,
         );
-        await gerichtAusKarteSyncen(zeile);
         karteInvalidieren();
         return Response.json(zeile, { status: 201 });
       }),
@@ -1256,12 +1113,11 @@ const server = Bun.serve({
         const daten = await kartePositionFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
         const r = await lauf(
-          "UPDATE karte_positionen SET gruppe_id = ?, name = ?, text = ?, option = ?, tags = ?, stern = ?, preise = ?, aktiv = ?, gericht_id = ? WHERE id = ?",
+          "UPDATE karte_positionen SET gruppe_id = ?, name = ?, text = ?, option = ?, tags = ?, stern = ?, preise = ?, aktiv = ? WHERE id = ?",
           daten.gruppe_id, daten.name, daten.text, daten.option, daten.tags,
-          daten.stern, daten.preise, daten.aktiv, daten.gericht_id, req.params.id,
+          daten.stern, daten.preise, daten.aktiv, req.params.id,
         );
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        await gerichtAusKarteSyncen(daten);
         karteInvalidieren();
         return Response.json({ id: req.params.id, ...daten });
       }),
@@ -1296,74 +1152,6 @@ const server = Bun.serve({
         }
         karteInvalidieren();
         return Response.json({ ok: true });
-      }),
-    },
-
-    // ---- Rezepte (Komponenten): lesen fürs Team, pflegen nur Admin ----
-    "/api/rezepte": {
-      GET: nurRezepte(async () => Response.json(await kueche.rezepteLaden())),
-      POST: nurRezepteAdmin(async (req) => {
-        const b = await req.json().catch(() => null);
-        const erg = await kueche.rezeptSpeichern(rezeptBody(b));
-        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
-        return Response.json({ id: erg.wert }, { status: 201 });
-      }),
-    },
-    "/api/rezepte/:id": {
-      PUT: nurRezepteAdmin(async (req) => {
-        const b = await req.json().catch(() => null);
-        const erg = await kueche.rezeptSpeichern(rezeptBody(b), req.params.id);
-        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
-        return Response.json({ id: erg.wert });
-      }),
-      DELETE: nurRezepteAdmin(async (req) => {
-        const erg = await kueche.rezeptLoeschen(req.params.id);
-        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 409 });
-        return new Response(null, { status: 204 });
-      }),
-    },
-
-    // ---- Gerichte (Karte): Verfügbarkeit fürs Team, Pflege nur Admin ----
-    "/api/gerichte": {
-      GET: nurRezepte(async () => Response.json(await kueche.gerichteLaden())),
-      POST: nurRezepteAdmin(async (req) => {
-        const b = await req.json().catch(() => null);
-        const erg = await kueche.gerichtSpeichern(gerichtBody(b));
-        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
-        return Response.json({ id: erg.wert }, { status: 201 });
-      }),
-    },
-    "/api/gerichte/:id": {
-      PUT: nurRezepteAdmin(async (req) => {
-        const b = await req.json().catch(() => null);
-        const daten = gerichtBody(b);
-        const erg = await kueche.gerichtSpeichern(daten, req.params.id);
-        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
-        // Küche -> Karte: verknüpfte Kartenpositionen übernehmen Name + Preis.
-        await lauf(
-          "UPDATE karte_positionen SET name = ?, preise = ? WHERE gericht_id = ?",
-          daten.name, daten.preis, req.params.id,
-        );
-        karteInvalidieren();
-        return Response.json({ id: erg.wert });
-      }),
-      DELETE: nurRezepteAdmin(async (req) => {
-        if (!(await kueche.gerichtLoeschen(req.params.id))) {
-          return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        }
-        karteInvalidieren(); // Verknüpfungen lösen sich (ON DELETE SET NULL)
-        return new Response(null, { status: 204 });
-      }),
-    },
-
-    // ---- Verkauf/Zubereitung buchen: zieht Zutaten vom Inventar ab ----
-    "/api/gerichte/:id/kochen": {
-      POST: nurRezepte(async (req) => {
-        const b = await req.json().catch(() => ({}));
-        const erg = await kueche.kochen(req.params.id, Number(b?.portionen ?? 1));
-        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
-        karteInvalidieren(); // Verfügbarkeit („heute aus“) hängt am Bestand
-        return Response.json({ ok: true, abgebucht: erg.wert });
       }),
     },
 

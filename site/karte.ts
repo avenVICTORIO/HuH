@@ -2,7 +2,6 @@ import { seite } from "./layout";
 import { huegelSvg } from "./art";
 import { HAUS } from "./info";
 import { alle } from "../db";
-import { gerichteLaden } from "../rezepte";
 import { KAPITEL_META, KENNZEICHEN, SONNTAG, type Kennzeichen } from "./karte-daten";
 
 // Karteninhalte kommen aus der Datenbank (Admin pflegt sie im Team-Bereich).
@@ -22,9 +21,6 @@ type DbPosition = {
   tags: string | null;
   stern: number;
   preise: string | null;
-  gericht_id: string | null;
-  /** Aus der Küche: false, wenn die Zutaten für keine Portion mehr reichen. */
-  verfuegbar?: boolean;
 };
 
 const css = /* css */ `
@@ -86,8 +82,6 @@ const css = /* css */ `
   }
   .tag.vg{background:var(--tann-hell); color:#fff;}
   .tag.gf{background:var(--linie); color:var(--taupe);}
-  .tag.heute-aus{background:#F6E3DC; color:var(--ton); letter-spacing:.06em;}
-  .gericht.aus-heute .name, .gericht.aus-heute .preis, .gericht.aus-heute .beschr{opacity:.55;}
   .fussnote{font-size:14px; color:var(--taupe); text-align:center; margin:22px 0 0; font-style:italic;}
 
   /* ---------------- Getränkezeilen mit Spalten ---------------- */
@@ -149,11 +143,9 @@ const tagsHtml = (p: DbPosition) => {
 };
 
 const gerichtHtml = (p: DbPosition) => /* html */ `
-<article class="gericht${p.verfuegbar === false ? " aus-heute" : ""}" data-tags="${posTags(p).join(" ")}">
+<article class="gericht" data-tags="${posTags(p).join(" ")}">
   <div class="gericht-kopf">
-    <span class="name">${esc(p.name)}${tagsHtml(p)}${
-      p.verfuegbar === false ? '<span class="tags"><span class="tag heute-aus">heute aus</span></span>' : ""
-    }</span>
+    <span class="name">${esc(p.name)}${tagsHtml(p)}</span>
     <span class="fuell"></span>
     <span class="preis">${preis(p.preise)}</span>
   </div>
@@ -374,14 +366,6 @@ export async function karteSeite(): Promise<string> {
   const positionen = await alle<DbPosition>(
     "SELECT * FROM karte_positionen WHERE aktiv = 1 ORDER BY sortierung, name",
   );
-  // Verknüpfte Küchen-Gerichte: reicht der Bestand für keine Portion mehr -> „heute aus“.
-  const verf = new Map((await gerichteLaden()).map((g) => [g.id, g.verfuegbar]));
-  for (const p of positionen) {
-    if (p.gericht_id && verf.has(p.gericht_id)) {
-      const v = verf.get(p.gericht_id);
-      p.verfuegbar = v == null ? undefined : v > 0;
-    }
-  }
   const posVon = (g: DbGruppe) => positionen.filter((p) => p.gruppe_id === g.id);
   const kapitel = KAPITEL_META
     .map((meta) => ({ meta, gruppen: gruppen.filter((g) => g.kapitel === meta.id) }))
