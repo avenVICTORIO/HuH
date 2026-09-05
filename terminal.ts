@@ -454,7 +454,7 @@ function liveVerbinden(){
   ws.onmessage=e=>{
     let d; try{ d=JSON.parse(e.data); }catch(x){ return; }
     if(!current) return;
-    if(d.typ==="chat.nachricht"||d.typ==="chat.geloescht"||d.typ==="team") chatWidget.ereignis(d);
+    if(String(d.typ).startsWith("chat.")||d.typ==="team") chatWidget.ereignis(d);
     else if(d.typ==="ablauf"){ ladeAblaufHome(); if(document.getElementById("screen-ablauf").classList.contains("active")) ladeAblauf(); }
   };
   ws.onclose=()=>{ liveWs=null; if(!current) return; setTimeout(liveVerbinden,liveWarte); liveWarte=Math.min(liveWarte*2,30000); };

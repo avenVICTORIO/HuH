@@ -70,7 +70,8 @@ async function antwortLauf(raum: string) {
     const res = await fetch(`${BASIS}/chat/completions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: MODELL, messages, stream: true, max_tokens: 700, temperature: 0.6 }),
+      // reasoning aus: sonst „denkt“ Qwen erst sekundenlang und der sichtbare Text kommt spät und in Klumpen.
+      body: JSON.stringify({ model: MODELL, messages, stream: true, max_tokens: 700, temperature: 0.6, reasoning: { enabled: false } }),
     });
     if (!res.ok || !res.body) {
       console.error("KI: HTTP", res.status, (await res.text().catch(() => "")).slice(0, 300));
