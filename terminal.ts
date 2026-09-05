@@ -101,16 +101,6 @@ ${baseCss}
   }
   .tiles-trenner::before, .tiles-trenner::after{content:""; flex:1; height:1px; background:var(--line);}
 
-  /* ---------- Reservierungen heute (Liste, kein Tischplan) ---------- */
-  .res-heute{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:4px 16px 6px; margin-bottom:6px;}
-  .res-heute .tp-kpi{font-size:13px; color:var(--clay); padding:10px 0 8px; border-bottom:1px solid var(--line);}
-  .res-heute .tp-res{display:flex; gap:12px; align-items:baseline; padding:10px 2px; border-bottom:1px solid var(--line); font-size:15px;}
-  .res-heute .tp-res:last-child{border-bottom:none;}
-  .res-heute .tp-zeit{font-family:var(--serif); color:var(--wald); min-width:52px; font-size:17px;}
-  .res-heute .tp-name{flex:1; color:var(--ink);} .res-heute .tp-det{color:var(--grey); font-size:12.5px; white-space:nowrap;}
-  .res-heute .tp-leer{color:var(--grey); font-style:italic; padding:14px 2px;}
-  .res-heute .tp-mehr{display:block; text-align:center; padding:10px 0 6px; font-size:13px; color:var(--wald);}
-
   /* Aufbau-Banner + Prozess-Buttons auf dem Home */
   .ablauf-banner{display:flex; align-items:center; gap:12px; width:100%; border:none; text-align:left; background:var(--amber); color:#fff;
     font-family:var(--sans); font-size:15px; border-radius:14px; padding:13px 16px; margin-bottom:16px; cursor:pointer; box-shadow:0 10px 26px -14px rgba(176,85,58,.7);}
@@ -250,12 +240,6 @@ ${baseCss}
 
     <div class="tiles-trenner">Abläufe</div>
     <div class="prozesse" id="prozesse"></div>
-
-    <!-- Nur mit Fähigkeit „reservierungen“: die heutige Liste (kein Tischplan). -->
-    <div id="resHeuteWrap" style="display:none">
-      <div class="tiles-trenner">Reservierungen heute</div>
-      <div class="res-heute" id="resHeute"></div>
-    </div>
 
     <div class="tiles-trenner">Werkzeuge</div>
     <!-- Werkzeug-Karten nach Fähigkeiten der Rolle (data-cap leer = für alle). -->
@@ -488,7 +472,6 @@ function liveVerbinden(){
     let d; try{ d=JSON.parse(e.data); }catch(x){ return; }
     if(!current) return;
     if(d.typ==="chat.nachricht"||d.typ==="chat.geloescht") ladeChatBadge();
-    else if(d.typ==="reservierungen") ladeReservierungenHeute();
     else if(d.typ==="ablauf"){ ladeAblaufHome(); if(document.getElementById("screen-ablauf").classList.contains("active")) ladeAblauf(); }
   };
   ws.onclose=()=>{ liveWs=null; if(!current) return; setTimeout(liveVerbinden,liveWarte); liveWarte=Math.min(liveWarte*2,30000); };
@@ -518,7 +501,6 @@ function renderHome(){
   }
   updateDuration();
   ladeAblaufHome();
-  ladeReservierungenHeute();
   ladeChatBadge();
 }
 /* Ungelesene Chat-Nachrichten als Zähler auf der Chat-Kachel. */
@@ -576,31 +558,6 @@ document.querySelectorAll(".tile.soon").forEach(t=>{
 const AB_LABEL={aufbau:"Aufbau",leerlauf:"Aufgaben bei Leerlauf",abbau:"Abbau"};
 const AB_KURZ={aufbau:"Aufbau",leerlauf:"Leerlauf",abbau:"Abbau"};
 function heute(){ const d=new Date(); return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); }
-
-/* --- Home: heutige Reservierungen als Liste (Pflege im Team-Bereich) --- */
-async function ladeReservierungenHeute(){
-  const wrap=$("resHeuteWrap"), box=$("resHeute");
-  const caps=(current&&current.caps)||[];
-  if(!(caps.includes("*")||caps.includes("reservierungen"))){ wrap.style.display="none"; return; }
-  let liste=[], u=null;
-  try{
-    const [a,b]=await Promise.all([
-      fetch("/api/reservierungen?datum="+heute()).then(r=>r.json()),
-      fetch("/api/reservierungen-uebersicht?datum="+heute()).then(r=>r.json()),
-    ]);
-    liste=Array.isArray(a)?a:[]; u=b;
-  }catch(e){ wrap.style.display="none"; return; }
-  const aktiv=liste.filter(r=>r.status==="offen"||r.status==="bestaetigt").sort((x,y)=>String(x.zeit).localeCompare(String(y.zeit)));
-  let html="";
-  if(u&&!u.fehler) html+='<div class="tp-kpi">'+(u.gaeste||0)+' Gäste · '+(u.reservierungen||0)+' Reservierungen · drinnen '+(u.drinnen||0)+' / draußen '+(u.draussen||0)+'</div>';
-  if(!aktiv.length) html+='<div class="tp-leer">Heute noch keine Reservierungen.</div>';
-  else for(const r of aktiv){
-    html+='<div class="tp-res"><span class="tp-zeit">'+esc(r.zeit)+'</span><span class="tp-name">'+esc(r.name)+'</span><span class="tp-det">'+r.personen+' Pers. · '+(r.bereich==="draussen"?"Draußen":"Drinnen")+'</span></div>';
-  }
-  html+='<a class="tp-mehr" href="/app/reservierungen">Alle Reservierungen verwalten ›</a>';
-  box.innerHTML=html;
-  wrap.style.display="";
-}
 
 /* --- Home: Banner + Prozess-Buttons aus dem Tages-Status --- */
 async function ladeAblaufHome(){
