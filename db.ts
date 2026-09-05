@@ -486,6 +486,19 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       CREATE INDEX ix_skill_schritte_lauf ON skill_schritte(lauf_id, ts);
     `,
   },
+  {
+    // Komposition: ein Lauf kann einen Sub-Flow rufen (Eltern-Lauf wartet mit Status 'kind',
+    // das Kind kennt Eltern-Lauf und Rückkehr-Actor).
+    id: "021-skills-komposition",
+    sql: /* sql */ `
+      ALTER TABLE skill_laeufe DROP CONSTRAINT skill_laeufe_status_check;
+      ALTER TABLE skill_laeufe ADD CONSTRAINT skill_laeufe_status_check
+        CHECK (status IN ('laeuft','wartet','kind','fertig','abgebrochen','fehler'));
+      ALTER TABLE skill_laeufe ADD COLUMN eltern_id TEXT REFERENCES skill_laeufe(id) ON DELETE SET NULL;
+      ALTER TABLE skill_laeufe ADD COLUMN rueckkehr_actor TEXT;
+      CREATE INDEX ix_skill_laeufe_eltern ON skill_laeufe(eltern_id);
+    `,
+  },
 ];
 
 async function migrieren() {

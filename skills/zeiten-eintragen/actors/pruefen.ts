@@ -21,7 +21,7 @@ const actor: Actor = {
   id: "pruefen",
   name: "Prüfen",
   art: "js",
-  beschreibung: "Prüft Datum und Uhrzeiten, erkennt Überschneidungen mit vorhandenen Zeiten, rechnet die Dauer.",
+  beschreibung: "Prüft Datum und Uhrzeiten, erkennt Überschneidungen mit vorhandenen Zeiten, rechnet die Dauer und ruft den Baustein „Bestätigung“.",
   pos: { x: 340, y: 120 },
   async handle(_post, k) {
     const z = k.zustand.zeit as { datum: string; von: string; bis: string };
@@ -47,9 +47,13 @@ const actor: Actor = {
       const liste = ueberlappt.map((s) => `${hm(s.start)}–${s.end ? hm(s.end) : "offen"}`).join(", ");
       return { weiter: "verstehen", sag: `An dem Tag ist schon Zeit erfasst (${liste}), die sich damit überschneidet. Welche Zeit soll ich stattdessen eintragen?`, zustand: { zeit: { datum: z.datum } } };
     }
+    const anzeige = `${datumSchoen(z.datum)}, ${z.von}–${z.bis} Uhr (${dauerH.toFixed(dauerH % 1 ? 1 : 0).replace(".", ",")} h)`;
+    // Rückfrage über den Baustein „Bestätigung“ – die Antwort kommt bei „entscheiden“ an.
     return {
-      weiter: "bestaetigen",
-      zustand: { geprueft: { start, ende, dauerH: Math.round(dauerH * 100) / 100, anzeige: `${datumSchoen(z.datum)}, ${z.von}–${z.bis} Uhr (${dauerH.toFixed(dauerH % 1 ? 1 : 0).replace(".", ",")} h)` } },
+      rufe: "bestaetigung",
+      dann: "entscheiden",
+      eingabe: { frage: `Ich trage ein: ${anzeige}. Passt das?` },
+      zustand: { geprueft: { start, ende, dauerH: Math.round(dauerH * 100) / 100, anzeige } },
     };
   },
 };

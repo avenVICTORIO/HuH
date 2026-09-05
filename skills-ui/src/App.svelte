@@ -15,20 +15,30 @@
   let markiert: { actor: string | null; status: string | null } = { actor: null, status: null };
 
   type Actor = { id: string; name: string; art: "ki" | "js"; beschreibung: string; pos: { x: number; y: number } };
-  type Flow = { id: string; name: string; start: string; actors: Actor[]; kanten: { von: string; nach: string; label?: string }[] };
+  type Verweis = { flow: string; name: string; pos: { x: number; y: number } };
+  type Flow = { id: string; name: string; start: string; actors: Actor[]; verweise?: Verweis[]; kanten: { von: string; nach: string; label?: string }[] };
 
   function baue(f: Flow) {
     const schleifen = new Map(f.kanten.filter((k) => k.von === k.nach).map((k) => [k.von, k.label ?? "↺"]));
-    nodes = f.actors.map((a) => ({
+    const actorKnoten: Node[] = f.actors.map((a) => ({
       id: a.id,
       type: "actor",
       position: a.pos,
       data: { ...a, start: a.id === f.start, schleife: schleifen.get(a.id) ?? null, aktiv: markiert.actor === a.id, status: markiert.status },
     }));
+    // Gerufene Sub-Flows (Komposition) erscheinen als eigene Knoten „flow:<id>“.
+    const verweisKnoten: Node[] = (f.verweise ?? []).map((v) => ({
+      id: "flow:" + v.flow,
+      type: "actor",
+      position: v.pos,
+      data: { id: v.flow, name: v.name, art: "flow", beschreibung: "Sub-Flow – läuft als eigener Lauf, das Ergebnis kommt hierher zurück.", verweis: true, aktiv: false, status: null },
+    }));
+    nodes = [...actorKnoten, ...verweisKnoten];
+    const reihe = (id: string) => { const i = f.actors.findIndex((a) => a.id === id); return i >= 0 ? i : f.actors.length; };
     edges = f.kanten
       .filter((k) => k.von !== k.nach)
       .map((k, i) => {
-        const rueck = f.actors.findIndex((a) => a.id === k.nach) < f.actors.findIndex((a) => a.id === k.von);
+        const rueck = reihe(k.nach) < reihe(k.von);
         return {
           id: "k" + i,
           source: k.von,
