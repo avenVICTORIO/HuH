@@ -326,6 +326,28 @@ ${baseCss}
     .sk-canvas{height:360px;}
   }
 
+  /* ---- Daten (Schemata & Dokumente) ---- */
+  .dt-layout{display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:14px; align-items:start; margin-top:12px;}
+  .dt-main{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; min-width:0;}
+  .dt-schema{margin:10px 0 0; font-size:11.5px; background:var(--creme); border:1px solid var(--line); border-radius:12px; padding:10px 12px; max-height:360px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .dt-neu{margin-top:10px; background:var(--creme); border:1px solid var(--line); border-radius:12px; padding:10px;}
+  .dt-neu textarea, .dt-schema-form textarea{display:block; width:100%; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; background:var(--card); color:var(--ink); margin-bottom:8px; resize:vertical;}
+  .dt-ergebnis{font-size:12.5px; color:var(--clay);} .dt-ergebnis.ok{color:var(--wald);} .dt-ergebnis.fehler{color:var(--rot);}
+  .dt-filter{display:flex; align-items:center; gap:8px; margin:12px 0 8px;}
+  .dt-filter input{flex:1; padding:8px 10px; border:1px solid var(--line); border-radius:10px; font-family:var(--sans); font-size:13px; background:var(--creme); color:var(--ink);}
+  .dt-tabelle-wrap{overflow:auto; border:1px solid var(--line); border-radius:12px; max-height:70vh;}
+  .dt-tabelle{border-collapse:collapse; width:100%; font-size:12.5px; min-width:100%;}
+  .dt-tabelle th{position:sticky; top:0; background:var(--creme); text-align:left; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--clay); padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  .dt-tabelle td{padding:7px 10px; border-bottom:1px solid var(--line); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); vertical-align:top;}
+  .dt-tabelle tr.dt-zeile{cursor:pointer;} .dt-tabelle tr.dt-zeile:hover td{background:var(--creme);}
+  .dt-tabelle td.leer{color:var(--grey);} .dt-tabelle td.num{font-variant-numeric:tabular-nums; text-align:right;}
+  .dt-tabelle td.dt-id{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; color:var(--grey);}
+  .dt-tabelle tr.dt-detail td{white-space:pre-wrap; background:var(--creme); font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; max-width:none;}
+  .dt-schema-form{padding:12px 14px; display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .dt-schema-form input{padding:8px 10px; border:1px solid var(--line); border-radius:10px; font-family:var(--sans); font-size:13px; background:var(--creme); color:var(--ink);}
+  .dt-schema-form textarea, .dt-schema-form .sk-kopf-akt{grid-column:1/-1;}
+  @media (max-width:880px){ .dt-layout{display:flex; flex-direction:column-reverse;} .dt-schema-form{grid-template-columns:1fr;} }
+
   /* ---- Rollen-Katalog ---- */
   .rollen-chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
   .rolle-karte{margin-bottom:12px;}
@@ -400,6 +422,7 @@ ${chatWidgetCss}
   <div class="tab" data-v="ablaeufe">Abläufe</div>
   <div class="tab" data-v="team">Team</div>
   <div class="tab" data-v="rollen">Rollen</div>
+  <div class="tab" data-v="daten">Daten</div>
 </nav>
 <div class="nav-schleier" id="navSchleier"></div>
 <button class="nav-knopf" id="navKnopf" aria-label="Navigation öffnen" aria-expanded="false" aria-controls="seitennav">
@@ -566,6 +589,47 @@ ${chatWidgetCss}
     </div>
   </section>
 
+  <!-- ===== VIEW: DATEN (Schemata & Rohdaten – daten.admin) ===== -->
+  <section class="view" id="v-daten">
+    <div class="sec-title">Daten</div>
+    <p class="hint">Alle Fachdaten liegen als Dokumente in einer Tabelle – jedes gegen sein JSON Schema validiert. Hier siehst du jedes Schema mit seinen Daten. Neue Schemata brauchen keine Migration; die generische API prüft jeden Schreibzugriff.</p>
+    <div class="dt-layout">
+      <div class="dt-main" id="dtMain" style="display:none">
+        <div class="sk-kopf">
+          <div><div class="sk-titel" id="dtTitel"></div><div class="sk-besch" id="dtBesch"></div></div>
+          <div class="sk-kopf-akt"><button class="sk-btn" id="dtSchemaZeigen">Schema</button><button class="sk-btn sm" id="dtNeuDoc">Neues Dokument</button></div>
+        </div>
+        <div class="sk-meta" id="dtMeta"></div>
+        <pre class="dt-schema" id="dtSchema" style="display:none"></pre>
+        <div class="dt-neu" id="dtNeu" style="display:none">
+          <textarea id="dtNeuJson" rows="6" spellcheck="false" placeholder='{"feld": "wert"}'></textarea>
+          <div class="sk-kopf-akt"><button class="sk-btn" id="dtPruefen">Prüfen</button><button class="sk-btn sm" id="dtAnlegen">Anlegen</button><span class="dt-ergebnis" id="dtErgebnis"></span></div>
+        </div>
+        <div class="dt-filter"><input id="dtFilter" placeholder="Filter: feld=wert, z. B. datum=2026-09-05 (Enter)"><span class="sk-count" id="dtAnzahl"></span></div>
+        <div class="dt-tabelle-wrap"><table class="dt-tabelle" id="dtTabelle"></table></div>
+      </div>
+      <aside class="sk-aside">
+        <div class="sk-aside-titel">Schemata</div>
+        <div class="sk-liste" id="dtListe"><div class="empty">lädt …</div></div>
+        <button class="sk-btn" id="dtNeuSchema" style="margin:10px 0 2px 6px">Neues Schema</button>
+      </aside>
+    </div>
+    <dialog class="sk-dialog" id="dtSchemaDialog">
+      <div class="sk-dialog-kopf"><b>Neues Schema</b><span>ID (a–z, 0–9, _), Name, Beschreibung, Rechte, JSON Schema</span><button class="sk-btn" id="dtSchemaDialogZu">Schließen</button></div>
+      <div class="dt-schema-form">
+        <input id="dtSId" placeholder="id, z. B. lieferanten"><input id="dtSName" placeholder="Name"><input id="dtSBesch" placeholder="Beschreibung">
+        <input id="dtSLesen" placeholder="Fähigkeit zum Lesen (leer = ganzes Team)"><input id="dtSSchreiben" placeholder="Fähigkeit zum Schreiben (leer = ganzes Team)">
+        <textarea id="dtSJson" rows="12" spellcheck="false">{
+  "type": "object",
+  "properties": { "name": { "type": "string" } },
+  "required": ["name"],
+  "additionalProperties": false
+}</textarea>
+        <div class="sk-kopf-akt"><button class="sk-btn sm" id="dtSAnlegen">Schema anlegen</button><span class="dt-ergebnis" id="dtSErgebnis"></span></div>
+      </div>
+    </dialog>
+  </section>
+
   <!-- ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== -->
   <section class="view" id="v-meine-schichten">
     <div class="sec-title">Meine Schichten</div>
@@ -701,14 +765,15 @@ function aktiviere(v){
   if(v==="ablaeufe") loadAblaeufe();
   if(v==="team") loadTeam();
   if(v==="rollen") ladeRollen();
+  if(v==="daten") loadDaten();
 }
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>aktiviere(t.dataset.v)));
 
 // Tabs folgen den Fähigkeiten der Rolle; Basis-Tabs (Meine Schichten/Zeiten) hat jeder.
 const TAB_CAPS={heute:"auswertung",reservierungen:"reservierungen",schichtplan:"schichtplan",
   "meine-schichten":"","meine-zeiten":"",skills:"",karte:"karte.admin",
-  auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin",rollen:"team.admin"};
-const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","skills","karte","auswertung","ablaeufe","team","rollen"];
+  auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin",rollen:"team.admin",daten:"daten.admin"};
+const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","skills","karte","auswertung","ablaeufe","team","rollen","daten"];
 const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
@@ -1275,6 +1340,8 @@ const VIEW_LADER={heute:()=>loadHeute(),reservierungen:()=>loadRes(),"meine-schi
   schichtplan:()=>loadSp(),auswertung:()=>loadReport(),ablaeufe:()=>loadAblaeufe(),team:()=>loadTeam(),rollen:()=>ladeRollen(),karte:()=>loadKarte()};
 function aktualisiereView(v){ const f=VIEW_LADER[v]; if(f) f(); }
 function liveEreignis(d){
+  // Daten-Ansicht spiegelt jede Fachdaten-Änderung sofort.
+  if(activeView==="daten"&&!String(d.typ).startsWith("chat.")&&d.typ!=="skills"){ if(d.typ==="daten") loadDaten(); else ladeDatenDocs(); }
   switch(d.typ){
     case "chat.nachricht": case "chat.geloescht": case "chat.tippt": return chatWidget.ereignis(d);
     case "reservierungen": if(activeView==="reservierungen"||activeView==="heute") aktualisiereView(activeView); return;
@@ -1438,6 +1505,74 @@ async function skLogKopieren(btn){
 $("skCanvas").addEventListener("load",skMarkiere);
 // Klick auf einen Skill-Knoten im Canvas wechselt zu diesem Skill.
 window.addEventListener("message",e=>{ if(e.data&&e.data.typ==="skill-oeffnen"&&SK_FLOWS.some(f=>f.id===e.data.id)){ skAktiv=e.data.id; skTab="ueberblick"; renderSkills(); loadSkLaeufe(); } });
+
+/* ===== VIEW: DATEN (Schemata + validierte Dokumente; nur daten.admin) ===== */
+let DT_SCHEMAS=[], dtAktiv=null, DT_DOCS=[], dtOffen=new Set();
+async function loadDaten(){
+  DT_SCHEMAS=await fetch("/api/daten/schemas").then(x=>x.json());
+  if(!dtAktiv||!DT_SCHEMAS.some(s=>s.id===dtAktiv)) dtAktiv=(DT_SCHEMAS[0]||{}).id||null;
+  renderDtListe(); await ladeDatenDocs();
+}
+function renderDtListe(){
+  $("dtListe").innerHTML=DT_SCHEMAS.map(s=>'<button class="sk-karte'+(s.id===dtAktiv?" aktiv":"")+'" data-dt="'+esc(s.id)+'"><div class="sk-k-name">'+esc(s.name)+'</div><div class="sk-k-meta">'+(s.system?"System · ":"")+s.anzahl+' Dok.</div></button>').join("")||'<div class="empty">Keine Schemata</div>';
+}
+const dtFelder=s=>(s.felder&&s.felder.length)?s.felder:Object.keys((s.schema&&s.schema.properties)||{});
+async function ladeDatenDocs(){
+  const s=DT_SCHEMAS.find(x=>x.id===dtAktiv), m=$("dtMain");
+  if(!s){ m.style.display="none"; return; }
+  m.style.display="";
+  $("dtTitel").innerHTML=esc(s.name)+(s.system?'<span class="sk-badge system">System</span>':'<span class="sk-badge component">Eigenes Schema</span>');
+  $("dtBesch").textContent=s.beschreibung||"";
+  $("dtMeta").innerHTML=['<span>id: <b>'+esc(s.id)+'</b></span>','<span>Version <b>'+s.version+'</b></span>','<span>Lesen: <b>'+esc(s.lesen||"Team")+'</b></span>','<span>Schreiben: <b>'+esc(s.schreiben||"Team")+'</b></span>',s.signal?'<span>Signal: <b>'+esc(s.signal)+'</b></span>':'','<span><b>'+dtFelder(s).length+'</b> Felder</span>'].join("");
+  $("dtSchema").textContent=JSON.stringify(s.schema,null,2);
+  const f=$("dtFilter").value.trim(); const q=f&&f.includes("=")?"&f."+encodeURIComponent(f.split("=")[0].trim())+"="+encodeURIComponent(f.split("=").slice(1).join("=").trim()):"";
+  const r=await fetch("/api/daten/"+encodeURIComponent(s.id)+"?limit=300"+q);
+  DT_DOCS=r.ok?await r.json():[]; $("dtAnzahl").textContent=DT_DOCS.length+(DT_DOCS.length>=300?"+":"");
+  renderDtTabelle(s);
+}
+function dtZelle(k,v,s){
+  if(v==null||v==="") return '<td class="leer">–</td>';
+  const p=((s.schema&&s.schema.properties)||{})[k]||{};
+  if(typeof v==="number"){ if(/^(_?erstellt|_?aktualisiert|ts|am)$/.test(k)&&v>1e12){ const d=new Date(v); return '<td class="num" title="'+v+'">'+datumSchoen(d.toISOString().slice(0,10)).replace(/ \d{4}$/,"")+' '+hm(v)+'</td>'; } return '<td class="num">'+v+'</td>'; }
+  if(typeof v==="object") v=JSON.stringify(v);
+  v=String(v); return '<td title="'+esc(v)+'">'+esc(v.length>60?v.slice(0,60)+"…":v)+'</td>';
+}
+function renderDtTabelle(s){
+  const felder=dtFelder(s), darf=cap("daten.admin")||!s.schreiben||cap(s.schreiben);
+  let html='<thead><tr><th>id</th>'+felder.map(k=>'<th>'+esc(k)+'</th>').join("")+'<th>angelegt</th><th></th></tr></thead><tbody>';
+  if(!DT_DOCS.length) html+='<tr><td colspan="'+(felder.length+3)+'" class="leer" style="text-align:center; padding:18px">Keine Dokumente</td></tr>';
+  for(const d of DT_DOCS){
+    html+='<tr class="dt-zeile" data-dtid="'+esc(d.id)+'"><td class="dt-id" title="'+esc(d.id)+'">'+esc(d.id.slice(0,8))+'</td>'+felder.map(k=>dtZelle(k,d[k],s)).join("")+dtZelle("_erstellt",d._erstellt,s)+
+      '<td>'+(darf?'<button class="sk-btn rot" data-dtdel="'+esc(d.id)+'">Löschen</button>':'')+'</td></tr>';
+    if(dtOffen.has(d.id)) html+='<tr class="dt-detail"><td colspan="'+(felder.length+3)+'">'+esc(JSON.stringify(d,null,2))+'</td></tr>';
+  }
+  $("dtTabelle").innerHTML=html+'</tbody>';
+}
+$("dtListe").addEventListener("click",e=>{ const b=e.target.closest("[data-dt]"); if(b){ dtAktiv=b.dataset.dt; dtOffen.clear(); $("dtFilter").value=""; renderDtListe(); ladeDatenDocs(); } });
+$("dtFilter").addEventListener("keydown",e=>{ if(e.key==="Enter") ladeDatenDocs(); });
+$("dtSchemaZeigen").addEventListener("click",()=>{ const p=$("dtSchema"); p.style.display=p.style.display==="none"?"":"none"; });
+$("dtNeuDoc").addEventListener("click",()=>{ const n=$("dtNeu"); n.style.display=n.style.display==="none"?"":"none"; $("dtErgebnis").textContent=""; if(n.style.display!=="none") $("dtNeuJson").focus(); });
+async function dtSenden(pfad,method,text){
+  let body; try{ body=JSON.parse(text); }catch(x){ return {ok:false,fehler:[{pfad:"",meldung:"Kein gültiges JSON: "+x.message}]}; }
+  const r=await fetch(pfad,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({})); return r.ok?{ok:true,daten:j,status:r.status}:{ok:false,fehler:Array.isArray(j.fehler)?j.fehler:[{pfad:"",meldung:j.fehler||("HTTP "+r.status)}]};
+}
+const dtFehlerText=f=>f.map(e=>(e.pfad?e.pfad+": ":"")+e.meldung).join(" · ");
+$("dtPruefen").addEventListener("click",async ()=>{ const r=await dtSenden("/api/daten/"+encodeURIComponent(dtAktiv)+"/validieren","POST",$("dtNeuJson").value); const el=$("dtErgebnis"); const ok=r.ok&&r.daten.ok!==false; el.className="dt-ergebnis "+(ok?"ok":"fehler"); el.textContent=ok?"Gültig.":dtFehlerText(r.ok?r.daten.fehler:r.fehler); });
+$("dtAnlegen").addEventListener("click",async ()=>{ const r=await dtSenden("/api/daten/"+encodeURIComponent(dtAktiv),"POST",$("dtNeuJson").value); const el=$("dtErgebnis"); el.className="dt-ergebnis "+(r.ok?"ok":"fehler"); el.textContent=r.ok?"Angelegt.":dtFehlerText(r.fehler); if(r.ok){ $("dtNeuJson").value=""; ladeDatenDocs(); loadDaten(); } });
+$("dtTabelle").addEventListener("click",async e=>{
+  const del=e.target.closest("[data-dtdel]"); if(del){ if(!confirm("Dokument löschen?")) return; await fetch("/api/daten/"+encodeURIComponent(dtAktiv)+"/"+encodeURIComponent(del.dataset.dtdel),{method:"DELETE"}); loadDaten(); return; }
+  const z=e.target.closest("tr.dt-zeile"); if(z){ const id=z.dataset.dtid; dtOffen.has(id)?dtOffen.delete(id):dtOffen.add(id); renderDtTabelle(DT_SCHEMAS.find(x=>x.id===dtAktiv)); }
+});
+$("dtNeuSchema").addEventListener("click",()=>{ $("dtSErgebnis").textContent=""; $("dtSchemaDialog").showModal(); });
+$("dtSchemaDialogZu").addEventListener("click",()=>$("dtSchemaDialog").close());
+$("dtSAnlegen").addEventListener("click",async ()=>{
+  let schema; try{ schema=JSON.parse($("dtSJson").value); }catch(x){ $("dtSErgebnis").className="dt-ergebnis fehler"; $("dtSErgebnis").textContent="Schema ist kein gültiges JSON: "+x.message; return; }
+  const body={id:$("dtSId").value.trim(),name:$("dtSName").value.trim(),beschreibung:$("dtSBesch").value.trim()||null,lesen:$("dtSLesen").value.trim()||null,schreiben:$("dtSSchreiben").value.trim()||null,schema};
+  const r=await fetch("/api/daten/schemas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); const j=await r.json().catch(()=>({}));
+  const el=$("dtSErgebnis"); el.className="dt-ergebnis "+(r.ok?"ok":"fehler"); el.textContent=r.ok?"Schema angelegt.":(j.fehler||"Fehler");
+  if(r.ok){ dtAktiv=body.id; $("dtSchemaDialog").close(); loadDaten(); }
+});
 
 /* ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== */
 async function loadMs(){

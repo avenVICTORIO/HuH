@@ -22,6 +22,7 @@ import * as chat from "./chat";
 import * as live from "./live";
 import * as ki from "./ki";
 import * as skills from "./skills";
+import * as dok from "./dokumente";
 import { OEFFNUNG } from "./site/info";
 import {
   CAPABILITIES,
@@ -56,11 +57,12 @@ const nurZeitenAdmin = mitCap("zeiten.admin");
 const nurAuswertung = mitCap("auswertung");
 const nurAblaeufe = mitCap("ablaeufe.admin");
 const nurTeamAdmin = mitCap("team.admin");
+const nurDatenAdmin = mitCap("daten.admin");
 
 /** Bereiche des Team-Bereichs – jeder unter /app/<bereich> erreichbar (Tabs in dashboard.ts). */
 const APP_BEREICHE = new Set([
   "heute", "reservierungen", "meine-schichten", "meine-zeiten", "karte",
-  "schichtplan", "auswertung", "ablaeufe", "team", "rollen", "skills",
+  "schichtplan", "auswertung", "ablaeufe", "team", "rollen", "skills", "daten",
 ]);
 
 /** Dauerhafte Umleitung – hält die Links der alten Website am Leben. */
@@ -1472,9 +1474,94 @@ const routen = {
         return Response.json({ id, name, vorname: vn, nachname: nn || null, role: role.trim(), ma_code: code, personalnr: pnr, soll_std: soll });
       }),
       DELETE: nurTeamAdmin(async (req) => {
-        const res = await lauf("DELETE FROM mitarbeiter WHERE id = ?", req.params.id);
-        if (res.changes === 0) return Response.json({ error: "nicht gefunden" }, { status: 404 });
+        const id = req.params.id;
+        if (!(await eins("SELECT 1 AS x FROM mitarbeiter WHERE id = ?", id))) return Response.json({ error: "nicht gefunden" }, { status: 404 });
+        // Fachdaten hängen im Dokumentenspeicher ohne Fremdschlüssel – Kaskaden hier nachziehen.
+        await lauf("DELETE FROM events WHERE mitarbeiter_id = ?", id);
+        await lauf("UPDATE schichten SET mitarbeiter_id = NULL WHERE mitarbeiter_id = ?", id);
+        await lauf("UPDATE ablauf_erledigt SET von = NULL WHERE von = ?", id);
+        await lauf("DELETE FROM mitarbeiter WHERE id = ?", id);
         return new Response(null, { status: 204 });
+      }),
+    },
+
+    // ---- Generischer Dokumentenspeicher: Schemata (JSON Schema) + validiertes CRUD – SSOT für Fachdaten ----
+    "/api/daten/schemas": {
+      GET: nurTeam(async (_req, ich) => Response.json((await dok.schemata()).filter((s) => dok.darf(ich, s, "lesen")))),
+      POST: nurDatenAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        if (!b) return Response.json({ fehler: "Ungültiges JSON" }, { status: 400 });
+        const r = await dok.schemaAnlegen(b);
+        return r.ok ? Response.json(r.schema, { status: 201 }) : Response.json({ fehler: r.fehler }, { status: 400 });
+      }),
+    },
+    "/api/daten/schemas/:id": {
+      GET: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.id);
+        if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return Response.json(s);
+      }),
+      PUT: nurDatenAdmin(async (req) => {
+        const b = await req.json().catch(() => null);
+        if (!b) return Response.json({ fehler: "Ungültiges JSON" }, { status: 400 });
+        const r = await dok.schemaAendern(req.params.id, b);
+        return r.ok ? Response.json(r.schema) : Response.json({ fehler: r.fehler }, { status: r.fehler === "nicht gefunden" ? 404 : 400 });
+      }),
+      DELETE: nurDatenAdmin(async (req) =>
+        (await dok.schemaLoeschen(req.params.id)) ? new Response(null, { status: 204 })
+          : Response.json({ fehler: "System-Schema oder nicht gefunden" }, { status: 400 })),
+    },
+    "/api/daten/:schema": {
+      GET: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        const q = new URL(req.url).searchParams;
+        const filter: Record<string, string> = {};
+        for (const [k, v] of q) if (k.startsWith("f.")) filter[k.slice(2)] = v;
+        return Response.json(await dok.liste(s, filter, Number(q.get("limit") ?? 200), Number(q.get("offset") ?? 0)));
+      }),
+      POST: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        if (!dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: 403 });
+        const b = await req.json().catch(() => null);
+        const r = await dok.anlegen(s, b, typeof b?.id === "string" ? b.id : undefined);
+        return r.ok ? Response.json(r.dokument, { status: 201 }) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
+      }),
+    },
+    "/api/daten/:schema/validieren": {
+      POST: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        const p = dok.pruefen(s, await req.json().catch(() => null));
+        return Response.json(p.ok ? { ok: true, data: p.data } : { ok: false, fehler: p.fehler });
+      }),
+    },
+    "/api/daten/:schema/:id": {
+      GET: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        const d = await dok.lesen(s, req.params.id);
+        return d ? Response.json(d) : Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+      }),
+      PUT: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: s ? 403 : 404 });
+        const r = await dok.ersetzen(s, req.params.id, await req.json().catch(() => null));
+        if (r === null) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return r.ok ? Response.json(r.dokument) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
+      }),
+      PATCH: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: s ? 403 : 404 });
+        const r = await dok.aendern(s, req.params.id, await req.json().catch(() => null));
+        if (r === null) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return r.ok ? Response.json(r.dokument) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
+      }),
+      DELETE: nurTeam(async (req, ich) => {
+        const s = await dok.schema(req.params.schema);
+        if (!s || !dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: s ? 403 : 404 });
+        return (await dok.loeschen(s, req.params.id)) ? new Response(null, { status: 204 }) : Response.json({ fehler: "nicht gefunden" }, { status: 404 });
       }),
     },
 

@@ -245,6 +245,7 @@ ${chatWidgetCss}
       <a class="tile werkzeug" href="/app/ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
       <a class="tile werkzeug" href="/app/karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
       <a class="tile werkzeug" href="/app/team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+      <a class="tile werkzeug" href="/app/daten" data-cap="daten.admin"><span class="ico">${teamIcons.auswertung}</span><span class="t">Daten</span></a>
     </template>
     <div class="tiles" id="tilesWerkzeuge"></div>
   </div>
