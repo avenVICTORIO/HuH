@@ -536,7 +536,7 @@ function heute(){ const d=new Date(); return d.getFullYear()+"-"+p2(d.getMonth()
 /* --- Home: Banner + Prozess-Buttons aus dem Tages-Status --- */
 async function ladeAblaufHome(){
   let st;
-  try{ st=await fetch("/api/ablauf/status?datum="+heute()).then(r=>r.json()); }catch(e){ return null; }
+  try{ st=await fetch("/api/ablauf/status?date="+heute()).then(r=>r.json()); }catch(e){ return null; }
   if(!st||st.fehler) return null;
   const b=$("ablaufBanner");
   if(st.aufbau.total>0 && !st.aufbau.fertig){
@@ -569,20 +569,20 @@ async function starteAblauf(prozess){
   show("screen-ablauf");
 }
 async function ladeAblauf(){
-  abDaten=await fetch("/api/ablauf?prozess="+abProzess+"&datum="+heute()).then(r=>r.json());
+  abDaten=await fetch("/api/ablauf?process="+abProzess+"&date="+heute()).then(r=>r.json());
   renderAblauf();
 }
 function renderAblauf(){
-  const aufg=(abDaten&&abDaten.aufgaben)||[];
-  const done=aufg.filter(a=>a.erledigt).length;
+  const aufg=(abDaten&&abDaten.tasks)||[];
+  const done=aufg.filter(a=>a.done).length;
   $("abFort").textContent=done+"/"+aufg.length;
-  const aktiv=aufg.find(a=>!a.erledigt);
+  const aktiv=aufg.find(a=>!a.done);
   const aktivId=aktiv?aktiv.id:null;
   let html="", letzteGruppe=null;
   for(const a of aufg){
-    if(a.gruppe && a.gruppe!==letzteGruppe){ html+='<div class="ab-gruppe">'+esc(a.gruppe)+'</div>'; letzteGruppe=a.gruppe; }
-    const zustand=a.erledigt?"fertig":(a.id===aktivId?"aktiv":"kommt");
-    html+='<div class="ab-task '+zustand+'"><div class="tt"><span class="ab-check">'+(a.erledigt?"✓":"")+'</span>'+esc(a.titel)+'</div>';
+    if(a.group && a.group!==letzteGruppe){ html+='<div class="ab-gruppe">'+esc(a.group)+'</div>'; letzteGruppe=a.group; }
+    const zustand=a.done?"fertig":(a.id===aktivId?"aktiv":"kommt");
+    html+='<div class="ab-task '+zustand+'"><div class="tt"><span class="ab-check">'+(a.done?"✓":"")+'</span>'+esc(a.title)+'</div>';
     if(zustand==="aktiv"){
       if(a.info) html+='<div class="ab-info">'+esc(a.info)+'</div>';
       html+='<button class="ab-erledigt" data-erledigt="'+a.id+'">Erledigt ✓</button>';
@@ -594,10 +594,10 @@ function renderAblauf(){
 $("ablaufBody").addEventListener("click",async e=>{
   const b=e.target.closest("[data-erledigt]"); if(!b) return;
   b.disabled=true;
-  await fetch("/api/ablauf/erledigt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({aufgabe_id:b.dataset.erledigt,datum:heute()})});
+  await fetch("/api/ablauf/erledigt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task_id:b.dataset.erledigt,date:heute()})});
   await ladeAblauf();
-  const aufg=(abDaten&&abDaten.aufgaben)||[];
-  const rest=aufg.filter(a=>!a.erledigt).length;
+  const aufg=(abDaten&&abDaten.tasks)||[];
+  const rest=aufg.filter(a=>!a.done).length;
   if(aufg.length>0 && rest===0){
     if(abProzess==="aufbau") toast("Aufbau fertig! <span class='big'>Alles bereit für den Abend</span>","in",2600);
     else toast(AB_KURZ[abProzess]+" abgeschlossen. Danke!","in",2000);

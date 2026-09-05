@@ -7,20 +7,20 @@ import { KAPITEL_META, KENNZEICHEN, SONNTAG, type Kennzeichen } from "./karte-da
 // Karteninhalte kommen aus der Datenbank (Admin pflegt sie im Team-Bereich).
 type DbGruppe = {
   id: string;
-  kapitel: string;
-  titel: string;
-  spalten: string | null;
-  fussnote: string | null;
+  chapter: string;
+  title: string;
+  columns: string | null;
+  footnote: string | null;
 };
 type DbPosition = {
   id: string;
-  gruppe_id: string;
+  group_id: string;
   name: string;
   text: string | null;
   option: string | null;
   tags: string | null;
-  stern: number;
-  preise: string | null;
+  star: number;
+  prices: string | null;
 };
 
 const css = /* css */ `
@@ -147,25 +147,25 @@ const gerichtHtml = (p: DbPosition) => /* html */ `
   <div class="gericht-kopf">
     <span class="name">${esc(p.name)}${tagsHtml(p)}</span>
     <span class="fuell"></span>
-    <span class="preis">${preis(p.preise)}</span>
+    <span class="preis">${preis(p.prices)}</span>
   </div>
-  ${p.text ? `<p class="beschr">${esc(p.text)}${p.stern ? " <span title='Wild aus eigener Jagd'>*</span>" : ""}</p>` : ""}
+  ${p.text ? `<p class="beschr">${esc(p.text)}${p.star ? " <span title='Wild aus eigener Jagd'>*</span>" : ""}</p>` : ""}
   ${p.option ? `<p class="option">${esc(p.option)}</p>` : ""}
 </article>`;
 
 const getraenkeHtml = (gr: DbGruppe, zeilen: DbPosition[]) => {
-  const spalten = gr.spalten ? gr.spalten.split("|") : [""];
+  const spalten = gr.columns ? gr.columns.split("|") : [""];
   return /* html */ `
 <table class="getraenke">
   ${
-    gr.spalten
+    gr.columns
       ? `<thead><tr><th></th>${spalten.map((s) => `<th>${esc(s)}</th>`).join("")}</tr></thead>`
       : ""
   }
   <tbody>
     ${zeilen
       .map((z) => {
-        const preise = (z.preise ?? "").split("|");
+        const preise = (z.prices ?? "").split("|");
         return `<tr>
       <td><span class="gname">${esc(z.name)}</span>${z.text ? `<span class="gtext">${esc(z.text)}</span>` : ""}</td>
       ${spalten
@@ -180,14 +180,14 @@ const getraenkeHtml = (gr: DbGruppe, zeilen: DbPosition[]) => {
 
 const gruppeHtml = (gr: DbGruppe, positionen: DbPosition[], getraenk: boolean) => /* html */ `
 <div class="gruppe">
-  <h3>${esc(gr.titel)}</h3>
+  <h3>${esc(gr.title)}</h3>
   <div class="regel"><span></span></div>
   ${
     getraenk
       ? getraenkeHtml(gr, positionen)
       : `<div class="speisen">${positionen.map(gerichtHtml).join("")}</div>`
   }
-  ${gr.fussnote ? `<p class="fussnote">${esc(gr.fussnote)}</p>` : ""}
+  ${gr.footnote ? `<p class="fussnote">${esc(gr.footnote)}</p>` : ""}
 </div>`;
 
 const kapitelHtml = (
@@ -362,13 +362,13 @@ export function karteInvalidieren() {
 export async function karteSeite(): Promise<string> {
   if (cacheHtml) return cacheHtml;
 
-  const gruppen = await alle<DbGruppe>("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
+  const gruppen = await alle<DbGruppe>("SELECT * FROM menu_groups ORDER BY sort_order, title");
   const positionen = await alle<DbPosition>(
-    "SELECT * FROM karte_positionen WHERE aktiv = 1 ORDER BY sortierung, name",
+    "SELECT * FROM menu_items WHERE active = 1 ORDER BY sort_order, name",
   );
-  const posVon = (g: DbGruppe) => positionen.filter((p) => p.gruppe_id === g.id);
+  const posVon = (g: DbGruppe) => positionen.filter((p) => p.group_id === g.id);
   const kapitel = KAPITEL_META
-    .map((meta) => ({ meta, gruppen: gruppen.filter((g) => g.kapitel === meta.id) }))
+    .map((meta) => ({ meta, gruppen: gruppen.filter((g) => g.chapter === meta.id) }))
     // Kapitel ohne Inhalt tauchen weder in der Sprungleiste noch auf der Seite auf.
     .filter((k) => k.gruppen.some((g) => posVon(g).length));
 

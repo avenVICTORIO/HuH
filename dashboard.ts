@@ -346,7 +346,11 @@ ${baseCss}
   .dt-schema-form{padding:12px 14px; display:grid; grid-template-columns:1fr 1fr; gap:8px;}
   .dt-schema-form input{padding:8px 10px; border:1px solid var(--line); border-radius:10px; font-family:var(--sans); font-size:13px; background:var(--creme); color:var(--ink);}
   .dt-schema-form textarea, .dt-schema-form .sk-kopf-akt{grid-column:1/-1;}
-  @media (max-width:880px){ .dt-layout{display:flex; flex-direction:column-reverse;} .dt-schema-form{grid-template-columns:1fr;} }
+  .sk-btn.aktiv{background:var(--ink); color:var(--card); border-color:var(--ink);}
+  .dt-tabelle td.dt-akt{font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:700;} .dt-akt.insert{color:var(--wald);} .dt-akt.update{color:var(--clay);} .dt-akt.delete{color:var(--rot);}
+  .dt-diff{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; color:var(--clay);}
+  .dt-unter{margin:18px 0 8px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--clay); font-weight:700;}
+  @media (max-width:880px){ .dt-layout{display:flex; flex-direction:column-reverse;} .dt-main, .dt-layout>.sk-aside{width:100%; max-width:100%; box-sizing:border-box;} .dt-tabelle-wrap{max-width:100%;} .dt-schema-form{grid-template-columns:1fr;} }
 
   /* ---- Rollen-Katalog ---- */
   .rollen-chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
@@ -597,7 +601,7 @@ ${chatWidgetCss}
       <div class="dt-main" id="dtMain" style="display:none">
         <div class="sk-kopf">
           <div><div class="sk-titel" id="dtTitel"></div><div class="sk-besch" id="dtBesch"></div></div>
-          <div class="sk-kopf-akt"><button class="sk-btn" id="dtSchemaZeigen">Schema</button><button class="sk-btn sm" id="dtNeuDoc">Neues Dokument</button></div>
+          <div class="sk-kopf-akt"><button class="sk-btn" id="dtSchemaZeigen">Schema</button><button class="sk-btn" id="dtVerlaufZeigen">Verlauf</button><button class="sk-btn sm" id="dtNeuDoc">Neues Dokument</button></div>
         </div>
         <div class="sk-meta" id="dtMeta"></div>
         <pre class="dt-schema" id="dtSchema" style="display:none"></pre>
@@ -605,8 +609,16 @@ ${chatWidgetCss}
           <textarea id="dtNeuJson" rows="6" spellcheck="false" placeholder='{"feld": "wert"}'></textarea>
           <div class="sk-kopf-akt"><button class="sk-btn" id="dtPruefen">Prüfen</button><button class="sk-btn sm" id="dtAnlegen">Anlegen</button><span class="dt-ergebnis" id="dtErgebnis"></span></div>
         </div>
-        <div class="dt-filter"><input id="dtFilter" placeholder="Filter: feld=wert, z. B. datum=2026-09-05 (Enter)"><span class="sk-count" id="dtAnzahl"></span></div>
-        <div class="dt-tabelle-wrap"><table class="dt-tabelle" id="dtTabelle"></table></div>
+        <div id="dtDocs">
+          <div class="dt-filter"><input id="dtFilter" placeholder="Filter: field=value, z. B. date=2026-09-05 (Enter)"><span class="sk-count" id="dtAnzahl"></span></div>
+          <div class="dt-tabelle-wrap"><table class="dt-tabelle" id="dtTabelle"></table></div>
+        </div>
+        <div id="dtVerlauf" style="display:none">
+          <div class="dt-unter">Dokument-Änderungen <span class="sk-count" id="dtVAnzahl"></span></div>
+          <div class="dt-tabelle-wrap"><table class="dt-tabelle" id="dtVTabelle"></table></div>
+          <div class="dt-unter">Schema-Änderungen</div>
+          <div class="dt-tabelle-wrap"><table class="dt-tabelle" id="dtSVTabelle"></table></div>
+        </div>
       </div>
       <aside class="sk-aside">
         <div class="sk-aside-titel">Schemata</div>
@@ -879,15 +891,15 @@ async function loadRes(){
   let kpi=null;
   if(resModus==="tag"){
     [resRows,kpi]=await Promise.all([
-      fetch("/api/reservierungen?datum="+datum).then(x=>x.json()),
-      fetch("/api/reservierungen-uebersicht?datum="+datum).then(x=>x.json())
+      fetch("/api/reservierungen?date="+datum).then(x=>x.json()),
+      fetch("/api/reservierungen-uebersicht?date="+datum).then(x=>x.json())
     ]);
   }else{
     resRows=await fetch("/api/reservierungen").then(x=>x.json());
   }
   $("resKpis").style.display=kpi?"grid":"none";
-  if(kpi){ $("kGaeste").textContent=kpi.gaeste; $("kDrinnen").textContent=kpi.drinnen;
-    $("kDraussen").textContent=kpi.draussen; $("kAuslastung").textContent=kpi.auslastung+" %"; }
+  if(kpi){ $("kGaeste").textContent=kpi.guests; $("kDrinnen").textContent=kpi.drinnen;
+    $("kDraussen").textContent=kpi.draussen; $("kAuslastung").textContent=kpi.occupancy+" %"; }
   $("kapBlock").style.display=cap("reservierungen")?"":"none";
   if(cap("reservierungen") && !$("kapDrinnen").value){
     const kap=await fetch("/api/kapazitaet").then(x=>x.json());
@@ -900,33 +912,33 @@ async function loadRes(){
 
   let html="", letztesDatum=null;
   for(const r of resRows){
-    if(resModus==="alle" && r.datum!==letztesDatum){
-      html+='<div class="res-datum">'+datumSchoen(r.datum)+'</div>';
-      letztesDatum=r.datum;
+    if(resModus==="alle" && r.date!==letztesDatum){
+      html+='<div class="res-datum">'+datumSchoen(r.date)+'</div>';
+      letztesDatum=r.date;
     }
     if(r.id===resEditId){
       html+='<div class="card row">'+
         '<input class="rowinput nm" id="reName" value="'+esc(r.name)+'" placeholder="Name">'+
-        '<input class="rowinput" type="date" id="reDatum" value="'+esc(r.datum)+'" style="width:150px">'+
-        '<input class="rowinput" type="time" id="reZeit" value="'+esc(r.zeit)+'" step="900" style="width:110px">'+
-        '<input class="rowinput pn" type="number" id="rePersonen" value="'+r.personen+'" min="1" max="120">'+
+        '<input class="rowinput" type="date" id="reDatum" value="'+esc(r.date)+'" style="width:150px">'+
+        '<input class="rowinput" type="time" id="reZeit" value="'+esc(r.time)+'" step="900" style="width:110px">'+
+        '<input class="rowinput pn" type="number" id="rePersonen" value="'+r.guests+'" min="1" max="120">'+
         '<select class="rowinput" id="reBereich" style="width:110px">'+
-          '<option value="drinnen"'+(r.bereich==="drinnen"?" selected":"")+'>Drinnen</option>'+
-          '<option value="draussen"'+(r.bereich==="draussen"?" selected":"")+'>Draußen</option></select>'+
-        '<input class="rowinput rl" id="reTelefon" value="'+esc(r.telefon==="-"?"":r.telefon)+'" placeholder="Telefon">'+
-        '<input class="rowinput nm" id="reNotiz" value="'+esc(r.notiz||"")+'" placeholder="Notiz">'+
+          '<option value="drinnen"'+(r.area==="drinnen"?" selected":"")+'>Drinnen</option>'+
+          '<option value="draussen"'+(r.area==="draussen"?" selected":"")+'>Draußen</option></select>'+
+        '<input class="rowinput rl" id="reTelefon" value="'+esc(r.phone||"")+'" placeholder="Telefon">'+
+        '<input class="rowinput nm" id="reNotiz" value="'+esc(r.note||"")+'" placeholder="Notiz">'+
         '<div class="res-akt">'+
           '<button class="ok" data-resave="'+r.id+'">Speichern</button>'+
           '<button data-recancel>Abbrechen</button>'+
         '</div></div>';
       continue;
     }
-    const details=[r.personen+" Pers.", r.bereich==="draussen"?"Draußen":"Drinnen", r.anlass, "Code "+r.code, r.telefon!=="-"?r.telefon:null].filter(Boolean).join(" · ");
+    const details=[r.guests+" Pers.", r.area==="draussen"?"Draußen":"Drinnen", r.occasion, "Code "+r.code, r.phone].filter(Boolean).join(" · ");
     html+='<div class="card row">'+
-      '<div class="res-zeit">'+esc(r.zeit)+'</div>'+
+      '<div class="res-zeit">'+esc(r.time)+'</div>'+
       '<div class="res-info"><div class="n">'+esc(r.name)+'</div>'+
         '<small>'+esc(details)+'</small>'+
-        (r.notiz?'<small class="notiz">„'+esc(r.notiz)+'“</small>':'')+
+        (r.note?'<small class="notiz">„'+esc(r.note)+'“</small>':'')+
       '</div>'+
       '<span class="pill '+r.status+'">'+STATUS_LABEL[r.status]+'</span>'+
       '<div class="res-akt">'+
@@ -957,10 +969,10 @@ $("resList").addEventListener("click",async e=>{
   if(b.dataset.resave){
     const alt=resRows.find(x=>x.id===b.dataset.resave)||{};
     const body={
-      name:$("reName").value.trim(), telefon:$("reTelefon").value.trim(),
-      email:alt.email, anlass:alt.anlass, bereich:$("reBereich").value,
-      datum:$("reDatum").value, zeit:$("reZeit").value,
-      personen:Number($("rePersonen").value), notiz:$("reNotiz").value.trim()
+      name:$("reName").value.trim(), phone:$("reTelefon").value.trim(),
+      email:alt.email, occasion:alt.occasion, area:$("reBereich").value,
+      date:$("reDatum").value, time:$("reZeit").value,
+      guests:Number($("rePersonen").value), note:$("reNotiz").value.trim()
     };
     const r=await fetch("/api/team/reservierungen/"+b.dataset.resave,{method:"PUT",
       headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -999,11 +1011,11 @@ $("btnKap").addEventListener("click",async ()=>{
 /* Neue Reservierung (Telefon/Walk-in) */
 $("btnResNeu").addEventListener("click",async ()=>{
   const body={
-    name:$("rnName").value.trim(), telefon:$("rnTelefon").value.trim(),
-    datum:$("rnDatum").value, zeit:$("rnZeit").value, bereich:$("rnBereich").value,
-    personen:Number($("rnPersonen").value), notiz:$("rnNotiz").value.trim()
+    name:$("rnName").value.trim(), phone:$("rnTelefon").value.trim(),
+    date:$("rnDatum").value, time:$("rnZeit").value, area:$("rnBereich").value,
+    guests:Number($("rnPersonen").value), note:$("rnNotiz").value.trim()
   };
-  if(!body.name||!body.datum||!body.zeit||!body.personen){ alert("Name, Datum, Uhrzeit und Personen sind Pflicht"); return; }
+  if(!body.name||!body.date||!body.time||!body.guests){ alert("Name, Datum, Uhrzeit und Personen sind Pflicht"); return; }
   const r=await fetch("/api/team/reservierungen",{method:"POST",
     headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
@@ -1150,7 +1162,7 @@ $("btnMzNeu").addEventListener("click",async ()=>{
 });
 
 /* ===== VIEW: WEBSITE-KARTE (Admin pflegt, sofort live) ===== */
-let KT={kapitel:[],gruppen:[],positionen:[]}, ktKapitel=null, ktPosEdit=null, ktDrag=null;
+let KT={kapitel:[],groups:[],items:[]}, ktKapitel=null, ktPosEdit=null, ktDrag=null;
 
 async function loadKarte(){
   KT=await fetch("/api/karte").then(x=>x.json());
@@ -1161,15 +1173,15 @@ async function loadKarte(){
 }
 
 function renderKarte(){
-  const gruppen=KT.gruppen.filter(g=>g.kapitel===ktKapitel);
+  const gruppen=KT.groups.filter(g=>g.chapter===ktKapitel);
   $("ktListe").innerHTML=gruppen.length?gruppen.map(g=>{
-    const posn=KT.positionen.filter(p=>p.gruppe_id===g.id);
+    const posn=KT.items.filter(p=>p.group_id===g.id);
     return '<div class="card regel-karte" data-ktgid="'+g.id+'">'+
       '<div class="edit-zeile">'+
         '<span class="regel-griff" draggable="true" data-ktggriff="'+g.id+'" title="Gruppe sortieren">⠿</span>'+
-        '<input data-ktgtitel="'+g.id+'" value="'+esc(g.titel)+'" style="flex:1; min-width:160px; font-weight:600">'+
-        '<input data-ktgspalten="'+g.id+'" value="'+esc(g.spalten||"")+'" placeholder="Preisspalten (|)" style="width:150px">'+
-        '<input data-ktgfuss="'+g.id+'" value="'+esc(g.fussnote||"")+'" placeholder="Fußnote" style="flex:1; min-width:140px">'+
+        '<input data-ktgtitel="'+g.id+'" value="'+esc(g.title)+'" style="flex:1; min-width:160px; font-weight:600">'+
+        '<input data-ktgspalten="'+g.id+'" value="'+esc(g.columns||"")+'" placeholder="Preisspalten (|)" style="width:150px">'+
+        '<input data-ktgfuss="'+g.id+'" value="'+esc(g.footnote||"")+'" placeholder="Fußnote" style="flex:1; min-width:140px">'+
         '<div class="res-akt"><button class="ok" data-ktgsave="'+g.id+'">Speichern</button>'+
         '<button class="no" data-ktgdel="'+g.id+'">Löschen</button></div>'+
       '</div>'+
@@ -1186,13 +1198,13 @@ function renderKarte(){
 
 function ktPosZeile(p){
   const offen=ktPosEdit===p.id;
-  return '<div class="kt-pos'+(p.aktiv?"":" kt-aus")+'" data-ktpid="'+p.id+'">'+
+  return '<div class="kt-pos'+(p.active?"":" kt-aus")+'" data-ktpid="'+p.id+'">'+
     '<div class="edit-zeile" style="margin-bottom:'+(offen?'6px':'4px')+'">'+
       '<span class="regel-griff" draggable="true" data-ktpgriff="'+p.id+'" title="Position sortieren">⠿</span>'+
       '<input data-ktpname="'+p.id+'" value="'+esc(p.name)+'" style="flex:1; min-width:160px">'+
-      '<input data-ktppreise="'+p.id+'" value="'+esc(p.preise||"")+'" placeholder="Preis(e)" style="width:100px">'+
+      '<input data-ktppreise="'+p.id+'" value="'+esc(p.prices||"")+'" placeholder="Preis(e)" style="width:100px">'+
       '<label style="font-size:11px; color:var(--grey); display:flex; align-items:center; gap:4px">'+
-        '<input type="checkbox" data-ktpaktiv="'+p.id+'"'+(p.aktiv?" checked":"")+'> aktiv</label>'+
+        '<input type="checkbox" data-ktpaktiv="'+p.id+'"'+(p.active?" checked":"")+'> aktiv</label>'+
       '<div class="res-akt">'+
         '<button class="ok" data-ktpsave="'+p.id+'">Speichern</button>'+
         '<button data-ktpmehr="'+p.id+'">'+(offen?"Weniger":"Details")+'</button>'+
@@ -1203,7 +1215,7 @@ function ktPosZeile(p){
       '<input data-ktptext="'+p.id+'" value="'+esc(p.text||"")+'" placeholder="Beschreibung" style="flex:1; min-width:220px">'+
       '<input data-ktpoption="'+p.id+'" value="'+esc(p.option||"")+'" placeholder="Option (z. B. vegan, ohne Feta − 2,5 €)" style="flex:1; min-width:180px">'+
       ["v","vg","gf"].map(t=>'<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktptag="'+p.id+'" value="'+t+'"'+((p.tags||"").split(",").includes(t)?" checked":"")+'> '+t.toUpperCase()+'</label>').join("")+
-      '<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktpstern="'+p.id+'"'+(p.stern?" checked":"")+'> * Wild</label>'+
+      '<label style="font-size:11px; color:var(--grey)"><input type="checkbox" data-ktpstern="'+p.id+'"'+(p.star?" checked":"")+'> * Wild</label>'+
     '</div>':'')+
   '</div>';
 }
@@ -1214,13 +1226,13 @@ function ktPosLesen(p){
   const chk=(sel)=>{const el=document.querySelector('[data-'+sel+'="'+id+'"]'); return el?el.checked:false;};
   const tags=[...document.querySelectorAll('[data-ktptag="'+id+'"]')].filter(c=>c.checked).map(c=>c.value).join(",");
   return {
-    gruppe_id:p.gruppe_id,
-    name:val("ktpname"), preise:val("ktppreise"),
+    group_id:p.group_id,
+    name:val("ktpname"), prices:val("ktppreise"),
     text:ktPosEdit===id?val("ktptext"):p.text,
     option:ktPosEdit===id?val("ktpoption"):p.option,
     tags:ktPosEdit===id?tags:(p.tags||""),
-    stern:ktPosEdit===id?(chk("ktpstern")?1:0):p.stern,
-    aktiv:chk("ktpaktiv")?1:0,
+    star:ktPosEdit===id?(chk("ktpstern")?1:0):p.star,
+    active:chk("ktpaktiv")?1:0,
   };
 }
 
@@ -1261,11 +1273,11 @@ function ktDnD(){
     });
   };
   wire("[data-ktggriff]","data-ktgid","/api/karte/gruppen-reihenfolge",
-    ()=>KT.gruppen,g=>g.kapitel===ktKapitel);
+    ()=>KT.groups,g=>g.chapter===ktKapitel);
   document.querySelectorAll("[data-ktgid]").forEach(gk=>{
     const gid=gk.dataset.ktgid;
     wire('[data-ktpgriff]',"data-ktpid","/api/karte/positionen-reihenfolge",
-      ()=>KT.positionen,p=>p.gruppe_id===gid);
+      ()=>KT.items,p=>p.group_id===gid);
   });
 }
 
@@ -1281,11 +1293,11 @@ document.getElementById("v-karte").addEventListener("click",async e=>{
     return true;
   };
   if(d.ktgsave){
-    const g=KT.gruppen.find(x=>x.id===d.ktgsave);
-    if(await api("/api/karte/gruppen/"+g.id,"PUT",{kapitel:g.kapitel,
-      titel:document.querySelector('[data-ktgtitel="'+g.id+'"]').value.trim(),
-      spalten:document.querySelector('[data-ktgspalten="'+g.id+'"]').value.trim(),
-      fussnote:document.querySelector('[data-ktgfuss="'+g.id+'"]').value.trim()})) loadKarte();
+    const g=KT.groups.find(x=>x.id===d.ktgsave);
+    if(await api("/api/karte/gruppen/"+g.id,"PUT",{chapter:g.chapter,
+      title:document.querySelector('[data-ktgtitel="'+g.id+'"]').value.trim(),
+      columns:document.querySelector('[data-ktgspalten="'+g.id+'"]').value.trim(),
+      footnote:document.querySelector('[data-ktgfuss="'+g.id+'"]').value.trim()})) loadKarte();
     return;
   }
   if(d.ktgdel){
@@ -1297,12 +1309,12 @@ document.getElementById("v-karte").addEventListener("click",async e=>{
     const name=document.querySelector('[data-ktneun="'+d.ktposneu+'"]').value.trim();
     const preise=document.querySelector('[data-ktneup="'+d.ktposneu+'"]').value.trim();
     if(!name){ alert("Bitte einen Namen angeben."); return; }
-    if(await api("/api/karte/positionen","POST",{gruppe_id:d.ktposneu,name,preise})) loadKarte();
+    if(await api("/api/karte/positionen","POST",{group_id:d.ktposneu,name,prices:preise})) loadKarte();
     return;
   }
   if(d.ktpmehr){ ktPosEdit=ktPosEdit===d.ktpmehr?null:d.ktpmehr; return renderKarte(); }
   if(d.ktpsave){
-    const p=KT.positionen.find(x=>x.id===d.ktpsave);
+    const p=KT.items.find(x=>x.id===d.ktpsave);
     if(await api("/api/karte/positionen/"+p.id,"PUT",ktPosLesen(p))){ ktPosEdit=null; loadKarte(); }
     return;
   }
@@ -1316,7 +1328,7 @@ $("btnKtGruppe").addEventListener("click",async ()=>{
   const titel=$("ktNeuTitel").value.trim();
   if(!titel){ alert("Bitte einen Gruppentitel angeben."); return; }
   const r=await fetch("/api/karte/gruppen",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({kapitel:ktKapitel,titel,spalten:$("ktNeuSpalten").value.trim()})});
+    body:JSON.stringify({chapter:ktKapitel,title:titel,columns:$("ktNeuSpalten").value.trim()})});
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   $("ktNeuTitel").value=""; $("ktNeuSpalten").value="";
   loadKarte();
@@ -1424,16 +1436,6 @@ function skLogText(o){
   if(o.tell) return "→ "+o.tell+(o.state&&o.state.hint?' · Hinweis: '+o.state.hint:"");
   return "";
 }
-// KI-Aufrufe eines Schritts: Systemprompt, Nutzertext, Schema, Rohantwort – aufklappbar.
-function skPromptBlock(calls){
-  if(!Array.isArray(calls)||!calls.length) return "";
-  return '<details class="sk-log-raw sk-prompt"><summary>Prompt'+(calls.length>1?" ×"+calls.length:"")+'</summary>'+calls.map((c,i)=>
-    '<div class="sk-call'+(c.error?" fehler":"")+'"><div class="sk-call-kopf">Aufruf '+(i+1)+' · '+esc(c.mode)+' · '+Math.round(c.ms)+' ms'+(c.retry?' · Retry':'')+(c.error?' · Fehler: '+esc(c.error):'')+'</div>'+
-    '<div class="sk-call-l">System</div><pre>'+esc(c.system)+'</pre>'+
-    '<div class="sk-call-l">Nutzer</div><pre>'+esc(c.user)+'</pre>'+
-    (c.schema?'<details><summary class="sk-call-l">Schema</summary><pre>'+esc(JSON.stringify(c.schema,null,1))+'</pre></details>':'')+
-    '<div class="sk-call-l">Antwort</div><pre>'+esc(c.response||"")+'</pre></div>').join("")+'</details>';
-}
 // Ein Lauf als Log-Liste; Kind-Läufe (z. B. HITL) eingerückt darunter.
 function skLaufKarte(l,kinder,tiefe){
   const f=SK_FLOWS.find(x=>x.id===l.flow), st=SK_STATUS[l.status]||[l.status,""];
@@ -1441,7 +1443,7 @@ function skLaufKarte(l,kinder,tiefe){
   const zeilen=l.steps.map(s=>{ const a=f&&f.actors.find(x=>x.id===s.actor);
     return '<div class="sk-log '+s.kind+'"><span class="sk-log-zeit">'+skZeit(s.ts)+'</span><span class="sk-log-actor">'+esc(a?a.name:s.actor)+'</span>'+
       '<span class="sk-log-kind">'+s.kind+'</span><span class="sk-log-ms">'+Math.round(s.ms)+' ms</span><span class="sk-log-text">'+esc(skLogText(s.output))+'</span>'+
-      '<span class="sk-log-details">'+skPromptBlock(s.ai)+'<details class="sk-log-raw"><summary>JSON</summary><pre>'+esc(JSON.stringify({input:s.input,output:s.output},null,1))+'</pre></details></span></div>'; }).join("");
+      '<span class="sk-log-details"><details class="sk-log-raw"><summary>JSON'+(s.ai&&s.ai.length?' + Prompt':'')+'</summary><pre>'+esc(JSON.stringify({input:s.input,output:s.output,ai:s.ai&&s.ai.length?s.ai:undefined},null,1))+'</pre></details></span></div>'; }).join("");
   const kids=(kinder.get(l.id)||[]).map(k=>skLaufKarte(k,kinder,tiefe+1)).join("");
   const offen=skOffen.has(l.id);
   const letzte=l.steps.length?skLogText(l.steps[l.steps.length-1].output):"";
@@ -1507,7 +1509,7 @@ $("skCanvas").addEventListener("load",skMarkiere);
 window.addEventListener("message",e=>{ if(e.data&&e.data.typ==="skill-oeffnen"&&SK_FLOWS.some(f=>f.id===e.data.id)){ skAktiv=e.data.id; skTab="ueberblick"; renderSkills(); loadSkLaeufe(); } });
 
 /* ===== VIEW: DATEN (Schemata + validierte Dokumente; nur daten.admin) ===== */
-let DT_SCHEMAS=[], dtAktiv=null, DT_DOCS=[], dtOffen=new Set();
+let DT_SCHEMAS=[], dtAktiv=null, DT_DOCS=[], dtOffen=new Set(), dtVerlaufAn=false, DT_VERLAUF=[], DT_SVERLAUF=[], dtVOffen=new Set();
 async function loadDaten(){
   DT_SCHEMAS=await fetch("/api/daten/schemas").then(x=>x.json());
   if(!dtAktiv||!DT_SCHEMAS.some(s=>s.id===dtAktiv)) dtAktiv=(DT_SCHEMAS[0]||{}).id||null;
@@ -1529,7 +1531,46 @@ async function ladeDatenDocs(){
   const r=await fetch("/api/daten/"+encodeURIComponent(s.id)+"?limit=300"+q);
   DT_DOCS=r.ok?await r.json():[]; $("dtAnzahl").textContent=DT_DOCS.length+(DT_DOCS.length>=300?"+":"");
   renderDtTabelle(s);
+  if(dtVerlaufAn) await ladeDtVerlauf();
 }
+async function ladeDtVerlauf(){
+  if(!spTeam.length) spTeam=await fetch("/api/mitarbeiter").then(x=>x.json()).catch(()=>[]);
+  const [v,sv]=await Promise.all([fetch("/api/daten/verlauf?limit=300&schema="+encodeURIComponent(dtAktiv)).then(x=>x.ok?x.json():[]),fetch("/api/daten/schema-verlauf?schema="+encodeURIComponent(dtAktiv)).then(x=>x.ok?x.json():[])]);
+  DT_VERLAUF=v; DT_SVERLAUF=sv; renderDtVerlauf();
+}
+const dtWann=ts=>{ const d=new Date(ts); return datumSchoen(d.toISOString().slice(0,10)).replace(/ \d{4}$/,"")+" "+hm(ts); };
+const dtWer=w=>!w?"–":(w==="migration"?"Migration":((spTeam||[]).find(m=>m.id===w)||{}).name||w.slice(0,8));
+function dtDiff(a,b){
+  a=a||{}; b=b||{}; const keys=[...new Set([...Object.keys(a),...Object.keys(b)])].filter(k=>JSON.stringify(a[k])!==JSON.stringify(b[k]));
+  return keys.map(k=>k+": "+(a[k]===undefined?"∅":JSON.stringify(a[k]))+" → "+(b[k]===undefined?"∅":JSON.stringify(b[k]))).join(" · ");
+}
+function renderDtVerlauf(){
+  $("dtVAnzahl").textContent=DT_VERLAUF.length+(DT_VERLAUF.length>=300?"+":"");
+  let html='<thead><tr><th>#</th><th>wann</th><th>aktion</th><th>wer</th><th>dokument</th><th>änderung</th><th></th></tr></thead><tbody>';
+  if(!DT_VERLAUF.length) html+='<tr><td colspan="7" class="leer" style="text-align:center; padding:18px">Noch keine Änderungen</td></tr>';
+  for(const v of DT_VERLAUF){
+    const diff=v.aktion==="update"?dtDiff(v.data_alt,v.data_neu):(v.aktion==="insert"?"angelegt":"gelöscht");
+    const wieder=v.aktion==="insert"?"Rückgängig (löschen)":(v.aktion==="delete"?"Wiederherstellen":"Alten Stand zurück");
+    html+='<tr class="dt-zeile" data-dtv="'+v.seq+'"><td class="num">'+v.seq+'</td><td>'+dtWann(v.ts)+'</td><td class="dt-akt '+v.aktion+'">'+v.aktion+'</td><td>'+esc(dtWer(v.wer))+'</td><td class="dt-id" title="'+esc(v.dokument_id)+'">'+esc(v.dokument_id.slice(0,8))+'</td><td class="dt-diff" title="'+esc(diff)+'">'+esc(diff.length>90?diff.slice(0,90)+"…":diff)+'</td>'+
+      '<td><button class="sk-btn sm" data-dtwieder="'+v.seq+'">'+wieder+'</button></td></tr>';
+    if(dtVOffen.has(v.seq)) html+='<tr class="dt-detail"><td colspan="7">'+esc(JSON.stringify({vorher:v.data_alt,nachher:v.data_neu},null,2))+'</td></tr>';
+  }
+  $("dtVTabelle").innerHTML=html+'</tbody>';
+  let sh='<thead><tr><th>#</th><th>wann</th><th>aktion</th><th>wer</th><th>version</th><th></th></tr></thead><tbody>';
+  if(!DT_SVERLAUF.length) sh+='<tr><td colspan="6" class="leer" style="text-align:center; padding:14px">Keine Schema-Änderungen</td></tr>';
+  for(const v of DT_SVERLAUF){
+    const ver=v.aktion==="update"?((v.alt||{}).version+" → "+(v.neu||{}).version):((v.neu||v.alt||{}).version||"");
+    sh+='<tr class="dt-zeile" data-dtsv="'+v.seq+'"><td class="num">'+v.seq+'</td><td>'+dtWann(v.ts)+'</td><td class="dt-akt '+v.aktion+'">'+v.aktion+'</td><td>'+esc(dtWer(v.wer))+'</td><td>'+esc(String(ver))+'</td><td>'+(v.aktion==="update"||(v.aktion==="delete")?'<button class="sk-btn sm" data-dtswieder="'+v.seq+'">Alten Stand zurück</button>':'')+'</td></tr>';
+    if(dtVOffen.has("s"+v.seq)) sh+='<tr class="dt-detail"><td colspan="6">'+esc(JSON.stringify({vorher:v.alt,nachher:v.neu},null,2))+'</td></tr>';
+  }
+  $("dtSVTabelle").innerHTML=sh+'</tbody>';
+}
+$("dtVerlaufZeigen").addEventListener("click",async ()=>{ dtVerlaufAn=!dtVerlaufAn; $("dtDocs").style.display=dtVerlaufAn?"none":""; $("dtVerlauf").style.display=dtVerlaufAn?"":"none"; $("dtVerlaufZeigen").classList.toggle("aktiv",dtVerlaufAn); if(dtVerlaufAn) await ladeDtVerlauf(); });
+$("dtVerlauf").addEventListener("click",async e=>{
+  const w=e.target.closest("[data-dtwieder]"); if(w){ if(!confirm("Diesen Stand wiederherstellen?")) return; const r=await fetch("/api/daten/verlauf/"+w.dataset.dtwieder+"/wiederherstellen",{method:"POST"}); if(!r.ok){ const j=await r.json().catch(()=>({})); alert(j.fehler||"Fehlgeschlagen"); } loadDaten(); return; }
+  const sw=e.target.closest("[data-dtswieder]"); if(sw){ if(!confirm("Schema auf den alten Stand zurücksetzen?")) return; const r=await fetch("/api/daten/schema-verlauf/"+sw.dataset.dtswieder+"/wiederherstellen",{method:"POST"}); if(!r.ok){ const j=await r.json().catch(()=>({})); alert(j.fehler||"Fehlgeschlagen"); } loadDaten(); return; }
+  const z=e.target.closest("tr.dt-zeile"); if(z){ const k=z.dataset.dtv?Number(z.dataset.dtv):"s"+z.dataset.dtsv; dtVOffen.has(k)?dtVOffen.delete(k):dtVOffen.add(k); renderDtVerlauf(); }
+});
 function dtZelle(k,v,s){
   if(v==null||v==="") return '<td class="leer">–</td>';
   const p=((s.schema&&s.schema.properties)||{})[k]||{};
@@ -1584,13 +1625,13 @@ async function loadMs(){
   const heute=heuteISO();
   const jetzt=new Date(); const jetztHM=p2(jetzt.getHours())+":"+p2(jetzt.getMinutes());
   $("msList").innerHTML=liste.map(s=>{
-    const laeuft=s.datum===heute && s.von<=jetztHM && jetztHM<=s.bis;
+    const laeuft=s.date===heute && s.start<=jetztHM && jetztHM<=s.end;
     return '<div class="card row'+(laeuft?" ms-aktiv":"")+'">'+
-      '<div class="mz-datum" style="min-width:150px">'+(s.datum===heute?"Heute":datumSchoen(s.datum))+'</div>'+
-      '<div class="res-info"><div class="n">'+esc(s.rolle)+
+      '<div class="mz-datum" style="min-width:150px">'+(s.date===heute?"Heute":datumSchoen(s.date))+'</div>'+
+      '<div class="res-info"><div class="n">'+esc(s.role)+
         (laeuft?' <span class="tag in">Läuft jetzt</span>':'')+'</div>'+
-        (s.notiz?'<small class="notiz">„'+esc(s.notiz)+'“</small>':'')+'</div>'+
-      '<div class="dur" style="min-width:130px">'+esc(s.von)+' – '+esc(s.bis)+'</div>'+
+        (s.note?'<small class="notiz">„'+esc(s.note)+'“</small>':'')+'</div>'+
+      '<div class="dur" style="min-width:130px">'+esc(s.start)+' – '+esc(s.end)+'</div>'+
     '</div>';
   }).join("");
 }
@@ -1619,7 +1660,7 @@ async function loadSp(){
   const tage=spTage();
   $("spWocheLbl").textContent=spKurz(tage[0])+" – "+spKurz(tage[6])+tage[6].slice(0,4).replace(/^/," ");
   if(!spTeam.length) spTeam=await fetch("/api/mitarbeiter").then(x=>x.json());
-  spSlots=await fetch("/api/schichten?von="+tage[0]+"&bis="+tage[6]).then(x=>x.json());
+  spSlots=await fetch("/api/schichten?from="+tage[0]+"&to="+tage[6]).then(x=>x.json());
 
   // Rechte Leiste: Chips nach Rolle gruppiert.
   const gruppen={};
@@ -1632,10 +1673,10 @@ async function loadSp(){
   // Wochenraster – gleiche Schichten (Rolle + Zeit) werden zu einer Karte mit mehreren Plätzen gruppiert.
   const heute=heuteISO();
   $("spWoche").innerHTML=spTage().map((datum,i)=>{
-    const slots=spSlots.filter(s=>s.datum===datum);
+    const slots=spSlots.filter(s=>s.date===datum);
     const gruppen=new Map();
     for(const s of slots){
-      const key=s.rolle+"|"+s.von+"|"+s.bis;
+      const key=s.role+"|"+s.start+"|"+s.end;
       if(!gruppen.has(key)) gruppen.set(key,[]);
       gruppen.get(key).push(s);
     }
@@ -1651,13 +1692,13 @@ async function loadSp(){
 /** Eine Schicht-Karte: Kopf (Rolle, Zeit) + ein Platz je Slot der Gruppe. */
 function spMini(gruppe){
   const s=gruppe[0];
-  return '<div class="sp-mini" data-rolle="'+esc(s.rolle)+'">'+
-    '<div class="sp-mini-kopf"><span class="r">'+esc(s.rolle)+(gruppe.length>1?' <small style="color:var(--clay)">×'+gruppe.length+'</small>':'')+'</span></div>'+
-    '<div class="z">'+esc(s.von)+' – '+esc(s.bis)+'</div>'+
+  return '<div class="sp-mini" data-rolle="'+esc(s.role)+'">'+
+    '<div class="sp-mini-kopf"><span class="r">'+esc(s.role)+(gruppe.length>1?' <small style="color:var(--clay)">×'+gruppe.length+'</small>':'')+'</span></div>'+
+    '<div class="z">'+esc(s.start)+' – '+esc(s.end)+'</div>'+
     gruppe.map(slot=>
-      '<div class="sp-platz" data-slot="'+slot.id+'" data-rolle="'+esc(slot.rolle)+'">'+
-        (slot.mitarbeiter_id
-          ? '<span class="sp-zug"><span>'+esc(slot.mitarbeiter_name||"?")+'</span>'+
+      '<div class="sp-platz" data-slot="'+slot.id+'" data-rolle="'+esc(slot.role)+'">'+
+        (slot.employee_id
+          ? '<span class="sp-zug"><span>'+esc(slot.employee_name||"?")+'</span>'+
             '<button data-spfrei="'+slot.id+'" title="Zuweisung lösen">×</button></span>'
           : '<div class="sp-frei">offen – hierher ziehen</div>')+
       '</div>').join("")+
@@ -1693,7 +1734,7 @@ function spDnD(){
 
 async function spZuweisen(slotId,mid){
   const r=await fetch("/api/schichten/"+slotId,{method:"PATCH",
-    headers:{"Content-Type":"application/json"},body:JSON.stringify({mitarbeiter_id:mid})});
+    headers:{"Content-Type":"application/json"},body:JSON.stringify({employee_id:mid})});
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   loadSp();
 }
@@ -1724,18 +1765,18 @@ async function loadRegeln(){
   if(!$("rgRolle").options.length) $("rgRolle").innerHTML=rollenOpt("Service");
   if(!$("rgTage").children.length) $("rgTage").innerHTML=tagToggles([0,1,3,4,5,6],'data-rgneu');
   $("spRegeln").innerHTML=SP_REGELN.length?SP_REGELN.map((r,i)=>{
-    const tage=r.tage.split(",").map(Number);
-    return '<div class="card regel-karte'+(r.aktiv?"":" inaktiv")+'" data-rid="'+r.id+'" style="'+(r.aktiv?"":"opacity:.55")+'">'+
+    const tage=r.weekdays.split(",").map(Number);
+    return '<div class="card regel-karte'+(r.active?"":" inaktiv")+'" data-rid="'+r.id+'" style="'+(r.active?"":"opacity:.55")+'">'+
       '<div class="regel-zeile">'+
         '<span class="regel-griff" draggable="true" data-rgriff="'+r.id+'" title="Ziehen zum Sortieren – die Reihenfolge gilt auch im Wochenplan">⠿</span>'+
-        '<select class="rowinput" data-rrolle="'+i+'" style="width:130px">'+rollenOpt(r.rolle)+'</select>'+
-        '<input type="time" data-rvon="'+i+'" value="'+esc(r.von)+'">'+
+        '<select class="rowinput" data-rrolle="'+i+'" style="width:130px">'+rollenOpt(r.role)+'</select>'+
+        '<input type="time" data-rvon="'+i+'" value="'+esc(r.start)+'">'+
         '<span style="color:var(--grey); font-size:13px">bis</span>'+
-        '<input type="time" data-rbis="'+i+'" value="'+esc(r.bis)+'">'+
-        '<input type="number" class="rowinput pn" data-ranzahl="'+i+'" value="'+r.anzahl+'" min="1" max="10" title="Anzahl gleicher Schichten">'+
-        rhythmusWahl(r.rhythmus,'data-rrhythmus="'+i+'"')+
-        '<input type="date" data-rstart="'+i+'" value="'+esc(r.start||"")+'" style="'+(r.rhythmus==="zweiwoechentlich"?"":"display:none")+'">'+
-        '<label class="inaktiv-lbl"><input type="checkbox" data-raktiv="'+i+'"'+(r.aktiv?" checked":"")+'> aktiv</label>'+
+        '<input type="time" data-rbis="'+i+'" value="'+esc(r.end)+'">'+
+        '<input type="number" class="rowinput pn" data-ranzahl="'+i+'" value="'+r.count+'" min="1" max="10" title="Anzahl gleicher Schichten">'+
+        rhythmusWahl(r.rhythm,'data-rrhythmus="'+i+'"')+
+        '<input type="date" data-rstart="'+i+'" value="'+esc(r.start_date||"")+'" style="'+(r.rhythm==="zweiwoechentlich"?"":"display:none")+'">'+
+        '<label class="inaktiv-lbl"><input type="checkbox" data-raktiv="'+i+'"'+(r.active?" checked":"")+'> aktiv</label>'+
       '</div>'+
       '<div class="regel-tage">'+tagToggles(tage,'data-rtage="'+i+'"')+'</div>'+
       '<div class="res-akt" style="margin-top:10px">'+
@@ -1803,14 +1844,14 @@ document.getElementById("v-schichtplan").addEventListener("click",async e=>{
     const i=b.dataset.rsave, r=SP_REGELN[Number(i)];
     const karte=b.closest(".regel-karte");
     const body={
-      rolle:karte.querySelector('[data-rrolle="'+i+'"]').value,
-      von:karte.querySelector('[data-rvon="'+i+'"]').value,
-      bis:karte.querySelector('[data-rbis="'+i+'"]').value,
-      anzahl:Number(karte.querySelector('[data-ranzahl="'+i+'"]').value),
-      rhythmus:karte.querySelector('[data-rrhythmus="'+i+'"]').value,
-      start:karte.querySelector('[data-rstart="'+i+'"]').value||null,
-      tage:toggleTage(karte.querySelector(".regel-tage")),
-      aktiv:karte.querySelector('[data-raktiv="'+i+'"]').checked?1:0,
+      role:karte.querySelector('[data-rrolle="'+i+'"]').value,
+      start:karte.querySelector('[data-rvon="'+i+'"]').value,
+      end:karte.querySelector('[data-rbis="'+i+'"]').value,
+      count:Number(karte.querySelector('[data-ranzahl="'+i+'"]').value),
+      rhythm:karte.querySelector('[data-rrhythmus="'+i+'"]').value,
+      start_date:karte.querySelector('[data-rstart="'+i+'"]').value||null,
+      weekdays:toggleTage(karte.querySelector(".regel-tage")),
+      active:karte.querySelector('[data-raktiv="'+i+'"]').checked?1:0,
     };
     const res_=await fetch("/api/schicht-regeln/"+r.id,{method:"PUT",
       headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -1827,9 +1868,9 @@ document.getElementById("v-schichtplan").addEventListener("change",e=>{
 });
 $("btnRegelNeu").addEventListener("click",async ()=>{
   const body={
-    rolle:$("rgRolle").value, von:$("rgVon").value, bis:$("rgBis").value,
-    anzahl:Number($("rgAnzahl").value), rhythmus:$("rgRhythmus").value,
-    start:$("rgStart").value||null, tage:toggleTage($("rgTage")),
+    role:$("rgRolle").value, start:$("rgVon").value, end:$("rgBis").value,
+    count:Number($("rgAnzahl").value), rhythm:$("rgRhythmus").value,
+    start_date:$("rgStart").value||null, weekdays:toggleTage($("rgTage")),
   };
   const r=await fetch("/api/schicht-regeln",{method:"POST",
     headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -1982,14 +2023,14 @@ function abChips(){
 }
 async function loadAblaeufe(){
   abChips();
-  const data=await fetch("/api/ablauf?prozess="+abProzess+"&datum="+heuteISO()).then(x=>x.json());
-  abList=data.aufgaben||[];
+  const data=await fetch("/api/ablauf?process="+abProzess+"&date="+heuteISO()).then(x=>x.json());
+  abList=data.tasks||[];
   $("abListe").innerHTML = abList.length ? abList.map((a,i)=>{
     if(a.id===abEditId){
       return '<div class="card">'+
         '<div class="row">'+
-          '<input class="rowinput nm" id="abETitel" value="'+esc(a.titel)+'">'+
-          '<input class="rowinput rl" id="abEGruppe" value="'+esc(a.gruppe||"")+'" placeholder="Gruppe">'+
+          '<input class="rowinput nm" id="abETitel" value="'+esc(a.title)+'">'+
+          '<input class="rowinput rl" id="abEGruppe" value="'+esc(a.group||"")+'" placeholder="Gruppe">'+
           '<button class="iconbtn edit" data-absave="'+a.id+'">Speichern</button>'+
           '<button class="iconbtn del" data-abcancel>Abbrechen</button>'+
         '</div>'+
@@ -1997,7 +2038,7 @@ async function loadAblaeufe(){
       '</div>';
     }
     return '<div class="card row">'+
-      '<div class="nm">'+(a.gruppe?'<small style="color:var(--clay); text-transform:uppercase; letter-spacing:.04em">'+esc(a.gruppe)+'</small>':'')+esc(a.titel)+(a.info?'<small>'+esc(a.info)+'</small>':'')+'</div>'+
+      '<div class="nm">'+(a.group?'<small style="color:var(--clay); text-transform:uppercase; letter-spacing:.04em">'+esc(a.group)+'</small>':'')+esc(a.title)+(a.info?'<small>'+esc(a.info)+'</small>':'')+'</div>'+
       '<button class="iconbtn" data-abup="'+a.id+'"'+(i===0?' disabled style="opacity:.3"':'')+' title="nach oben">▲</button>'+
       '<button class="iconbtn" data-abdown="'+a.id+'"'+(i===abList.length-1?' disabled style="opacity:.3"':'')+' title="nach unten">▼</button>'+
       '<button class="iconbtn edit" data-abedit="'+a.id+'">Bearbeiten</button>'+
@@ -2014,8 +2055,8 @@ $("abListe").addEventListener("click",async e=>{
   if(t.dataset.abcancel!==undefined){ abEditId=null; return loadAblaeufe(); }
   if(t.dataset.abdel){ if(confirm("Aufgabe wirklich löschen?")){ await fetch("/api/ablauf/aufgaben/"+t.dataset.abdel,{method:"DELETE"}); loadAblaeufe(); } return; }
   if(t.dataset.absave){
-    const body={titel:$("abETitel").value.trim(),gruppe:$("abEGruppe").value.trim(),info:$("abEInfo").value.trim()};
-    if(!body.titel){ alert("Titel ist Pflicht"); return; }
+    const body={title:$("abETitel").value.trim(),group:$("abEGruppe").value.trim(),info:$("abEInfo").value.trim()};
+    if(!body.title){ alert("Titel ist Pflicht"); return; }
     const r=await fetch("/api/ablauf/aufgaben/"+t.dataset.absave,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
     abEditId=null; loadAblaeufe(); return;
@@ -2031,8 +2072,8 @@ $("abListe").addEventListener("click",async e=>{
   }
 });
 $("abAdd").addEventListener("click",async ()=>{
-  const body={prozess:abProzess,titel:$("abNeuTitel").value.trim(),gruppe:$("abNeuGruppe").value.trim(),info:$("abNeuInfo").value.trim()};
-  if(!body.titel){ alert("Titel ist Pflicht"); return; }
+  const body={process:abProzess,title:$("abNeuTitel").value.trim(),group:$("abNeuGruppe").value.trim(),info:$("abNeuInfo").value.trim()};
+  if(!body.title){ alert("Titel ist Pflicht"); return; }
   const r=await fetch("/api/ablauf/aufgaben",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   $("abNeuTitel").value=""; $("abNeuGruppe").value=""; $("abNeuInfo").value=""; loadAblaeufe();

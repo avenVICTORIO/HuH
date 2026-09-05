@@ -1,8 +1,8 @@
 // Reservierungs-Logik: Zeitfenster, Kapazität, Anlegen und Verwalten.
 // Bewusst ohne externe Abhängigkeit – SQLite als einzige Quelle der Wahrheit.
 
-import { randomUUID } from "node:crypto";
 import { alle, eins, lauf } from "./db";
+import * as dok from "./dokumente";
 import { OEFFNUNG, WOCHENTAGE } from "./site/info";
 
 export type Bereich = "drinnen" | "draussen";
@@ -67,19 +67,22 @@ export type Reservierung = {
   id: string;
   code: string;
   name: string;
-  email: string;
-  telefon: string;
-  datum: string; // YYYY-MM-DD
-  zeit: string; //  HH:MM
-  personen: number;
-  bereich: Bereich;
-  anlass: string | null;
-  notiz: string | null;
+  email: string | null;
+  phone: string | null;
+  date: string; // YYYY-MM-DD
+  time: string; //  HH:MM
+  guests: number;
+  area: Bereich;
+  occasion: string | null;
+  note: string | null;
   status: Status;
-  erstellt: number;
+  created_at: number;
 };
 
-export type Slot = { zeit: string; frei: number; buchbar: boolean };
+/** SSOT-Zugriff (Schema reservations): Schreiben validiert + Historie. */
+const RES = dok.store<Omit<Reservierung, "id">>("reservations");
+
+export type Slot = { time: string; free: number; bookable: boolean };
 
 // ---------------------------------------------------------------- Hilfsmittel
 
@@ -142,8 +145,8 @@ export function rasterFuer(datum: string): string[] {
 
 /** Belegte Plätze je Rasterzeit und Bereich – Überschneidung bei < 120 min Abstand. */
 async function belegung(datum: string): Promise<Map<string, { drinnen: number; draussen: number }>> {
-  const aktiv = await alle<{ zeit: string; personen: number; bereich: Bereich }>(
-    "SELECT zeit, personen, bereich FROM reservierungen WHERE datum = ? AND status IN ('offen','bestaetigt')",
+  const aktiv = await alle<{ time: string; guests: number; area: Bereich }>(
+    "SELECT time, guests, area FROM reservations WHERE date = ? AND status IN ('offen','bestaetigt')",
     datum,
   );
 
@@ -152,8 +155,8 @@ async function belegung(datum: string): Promise<Map<string, { drinnen: number; d
     const s = minuten(slot);
     const summe = { drinnen: 0, draussen: 0 };
     for (const r of aktiv) {
-      const a = minuten(r.zeit);
-      if (Math.abs(a - s) < BELEGUNG_MIN) summe[r.bereich] += r.personen;
+      const a = minuten(r.time);
+      if (Math.abs(a - s) < BELEGUNG_MIN) summe[r.area] += r.guests;
     }
     karte.set(slot, summe);
   }
@@ -172,11 +175,11 @@ export async function slotsFuer(
 ): Promise<Slot[]> {
   const [belegt, kap] = await Promise.all([belegung(datum), kapazitaet()]);
   const online = onlinePlaetze(kap, bereich);
-  return rasterFuer(datum).map((zeit) => {
-    const b = belegt.get(zeit) ?? { drinnen: 0, draussen: 0 };
-    const frei = Math.max(0, online - b[bereich]);
-    const rechtzeitig = stempel(datum, zeit) - jetzt >= VORLAUF_MIN * 60_000;
-    return { zeit, frei, buchbar: rechtzeitig && frei >= personen };
+  return rasterFuer(datum).map((time) => {
+    const b = belegt.get(time) ?? { drinnen: 0, draussen: 0 };
+    const free = Math.max(0, online - b[bereich]);
+    const rechtzeitig = stempel(datum, time) - jetzt >= VORLAUF_MIN * 60_000;
+    return { time, free, bookable: rechtzeitig && free >= personen };
   });
 }
 
@@ -211,12 +214,12 @@ export async function pruefe(
     return { ok: false, fehler: `${tagName(datum)} ist unser Ruhetag – wir freuen uns an jedem anderen Tag.` };
   }
 
-  const slot = (await slotsFuer(datum, personen, bereich, jetzt)).find((s) => s.zeit === zeit);
+  const slot = (await slotsFuer(datum, personen, bereich, jetzt)).find((s) => s.time === zeit);
   if (!slot) return { ok: false, fehler: "Diese Uhrzeit können wir nicht anbieten." };
   if (stempel(datum, zeit) - jetzt < VORLAUF_MIN * 60_000) {
     return { ok: false, fehler: "Für kurzfristige Tische ruft uns bitte kurz an." };
   }
-  if (slot.frei < personen) {
+  if (slot.free < personen) {
     return {
       ok: false,
       fehler: `${BEREICH_LABEL[bereich]} sind wir zu dieser Zeit leider voll – probiert eine andere Uhrzeit oder den anderen Bereich.`,
@@ -229,88 +232,80 @@ export async function pruefe(
 
 export type NeueReservierung = {
   name: string;
-  email: string;
-  telefon: string;
-  datum: string;
-  zeit: string;
-  personen: number;
-  bereich: Bereich;
-  anlass?: string | null;
-  notiz?: string | null;
+  email: string | null;
+  phone: string | null;
+  date: string;
+  time: string;
+  guests: number;
+  area: Bereich;
+  occasion?: string | null;
+  note?: string | null;
   status?: Status;
 };
 
-export async function anlegen(r: NeueReservierung): Promise<Reservierung> {
-  const code = codeErzeugen();
-  const zeile: Reservierung = {
-    id: randomUUID(),
-    code,
+/** Nur die Fachfelder (ohne Store-Meta) – so gehen Reservierungen nach draussen. */
+const fach = (d: Record<string, unknown>): Reservierung => {
+  const { _erstellt: _e, _aktualisiert: _a, ...rest } = d;
+  return rest as Reservierung;
+};
+
+export async function anlegen(r: NeueReservierung, wer: string | null = "guest"): Promise<Reservierung> {
+  const d = await RES.create({
+    code: codeErzeugen(),
     name: r.name.trim(),
-    email: r.email.trim(),
-    telefon: r.telefon.trim(),
-    datum: r.datum,
-    zeit: r.zeit,
-    personen: r.personen,
-    bereich: r.bereich,
-    anlass: r.anlass?.trim() || null,
-    notiz: r.notiz?.trim() || null,
+    email: r.email?.trim() || null,
+    phone: r.phone?.trim() || null,
+    date: r.date,
+    time: r.time,
+    guests: r.guests,
+    area: r.area,
+    occasion: r.occasion?.trim() || null,
+    note: r.note?.trim() || null,
     status: r.status ?? "offen",
-    erstellt: Date.now(),
-  };
-  await lauf(
-    `INSERT INTO reservierungen
-       (id, code, name, email, telefon, datum, zeit, personen, bereich, anlass, notiz, status, erstellt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    zeile.id, zeile.code, zeile.name, zeile.email, zeile.telefon, zeile.datum,
-    zeile.zeit, zeile.personen, zeile.bereich, zeile.anlass, zeile.notiz, zeile.status, zeile.erstellt,
-  );
-  return zeile;
+    created_at: Date.now(),
+  }, wer);
+  return fach(d);
 }
 
 export const nachCode = (code: string) =>
-  eins<Reservierung>("SELECT * FROM reservierungen WHERE code = ?", code.trim().toUpperCase());
+  eins<Reservierung>("SELECT * FROM reservations WHERE code = ?", code.trim().toUpperCase());
 
 export const fuerTag = (datum: string) =>
-  alle<Reservierung>("SELECT * FROM reservierungen WHERE datum = ? ORDER BY zeit, name", datum);
+  alle<Reservierung>("SELECT * FROM reservations WHERE date = ? ORDER BY time, name", datum);
 
 /** Kommende Reservierungen ab heute – Grundlage der Team-Übersicht. */
 export const abHeute = (limit = 200) =>
   alle<Reservierung>(
-    `SELECT * FROM reservierungen
-      WHERE datum >= ? AND status IN ('offen','bestaetigt')
-      ORDER BY datum, zeit LIMIT ?`,
+    `SELECT * FROM reservations
+      WHERE date >= ? AND status IN ('offen','bestaetigt')
+      ORDER BY date, time LIMIT ?`,
     alsDatum(new Date()), limit,
   );
 
-export async function statusSetzen(id: string, status: Status): Promise<boolean> {
-  return (await lauf("UPDATE reservierungen SET status = ? WHERE id = ?", status, id)).changes > 0;
+export async function statusSetzen(id: string, status: Status, wer: string | null): Promise<boolean> {
+  return !!(await RES.patch(id, { status }, wer));
 }
 
 /** Team-Bearbeitung: Stammdaten einer Reservierung ändern (Format-, keine Kapazitätsprüfung). */
 export async function aktualisieren(
   id: string,
-  f: Pick<Reservierung, "name" | "email" | "telefon" | "datum" | "zeit" | "personen" | "bereich" | "anlass" | "notiz">,
+  f: Pick<Reservierung, "name" | "email" | "phone" | "date" | "time" | "guests" | "area" | "occasion" | "note">,
+  wer: string | null,
 ): Promise<Reservierung | null> {
-  const res = await lauf(
-    `UPDATE reservierungen
-        SET name = ?, email = ?, telefon = ?, datum = ?, zeit = ?, personen = ?, bereich = ?, anlass = ?, notiz = ?
-      WHERE id = ?`,
-    f.name, f.email, f.telefon, f.datum, f.zeit, f.personen, f.bereich, f.anlass, f.notiz, id,
-  );
-  if (res.changes === 0) return null;
-  return eins<Reservierung>("SELECT * FROM reservierungen WHERE id = ?", id);
+  const d = await RES.patch(id, f, wer);
+  return d ? fach(d) : null;
 }
 
 /** Team-Löschung: Reservierung endgültig entfernen (z. B. Testeinträge, Dubletten). */
-export async function loeschen(id: string): Promise<boolean> {
-  return (await lauf("DELETE FROM reservierungen WHERE id = ?", id)).changes > 0;
+export async function loeschen(id: string, wer: string | null): Promise<boolean> {
+  return RES.remove(id, wer);
 }
 
 /** Gast storniert selbst über seinen Code. */
 export async function stornieren(code: string): Promise<Reservierung | null> {
   const r = await nachCode(code);
   if (!r || r.status === "abgesagt") return r;
-  await lauf("UPDATE reservierungen SET status = 'abgesagt' WHERE id = ?", r.id);
+  await RES.patch(r.id, { status: "abgesagt" }, "guest");
   return { ...r, status: "abgesagt" };
 }
 
@@ -318,16 +313,16 @@ export async function stornieren(code: string): Promise<Reservierung | null> {
 export async function tagesUebersicht(datum: string) {
   const [liste, kap] = await Promise.all([fuerTag(datum), kapazitaet()]);
   const aktiv = liste.filter((r) => r.status === "offen" || r.status === "bestaetigt");
-  const gaeste = aktiv.reduce((s, r) => s + r.personen, 0);
+  const guests = aktiv.reduce((s, r) => s + r.guests, 0);
   // Auslastung gegen die physischen Plätze – der Puffer betrifft nur die Online-Buchung.
   const gesamtKap = kap.drinnen + kap.draussen;
   return {
-    datum,
-    reservierungen: liste.length,
-    gaeste,
-    drinnen: aktiv.filter((r) => r.bereich === "drinnen").reduce((s, r) => s + r.personen, 0),
-    draussen: aktiv.filter((r) => r.bereich === "draussen").reduce((s, r) => s + r.personen, 0),
-    offen: liste.filter((r) => r.status === "offen").length,
-    auslastung: gesamtKap > 0 ? Math.round((gaeste / gesamtKap) * 100) : 0,
+    date: datum,
+    reservations: liste.length,
+    guests,
+    drinnen: aktiv.filter((r) => r.area === "drinnen").reduce((s, r) => s + r.guests, 0),
+    draussen: aktiv.filter((r) => r.area === "draussen").reduce((s, r) => s + r.guests, 0),
+    open: liste.filter((r) => r.status === "offen").length,
+    occupancy: gesamtKap > 0 ? Math.round((guests / gesamtKap) * 100) : 0,
   };
 }

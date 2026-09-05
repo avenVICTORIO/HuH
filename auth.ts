@@ -4,6 +4,7 @@
 
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { alle, eins, lauf, type Mitarbeiter } from "./db";
+import * as dok from "./dokumente";
 
 const COOKIE = "huh_session";
 const GUELTIG_MS = 12 * 60 * 60 * 1000; // eine Schicht + Puffer
@@ -125,6 +126,20 @@ export type Sitzung = {
   end: number | null;
 };
 
+/** Stempel-Ereignisse (SSOT: Dokumentenspeicher, Schema time_events). */
+type TimeEvent = { employee_id: string; type: "in" | "out"; ts: number };
+const EVENTS = dok.store<TimeEvent>("time_events");
+
+/** Letztes Stempel-Ereignis einer Person. */
+export const letztesEvent = (employeeId: string) =>
+  eins<{ type: "in" | "out"; ts: number }>(
+    "SELECT type, ts FROM time_events WHERE employee_id = ? ORDER BY ts DESC LIMIT 1", employeeId,
+  );
+
+/** Ein Stempel-Ereignis anlegen (validiert + Historie). */
+export const eventAnlegen = (employeeId: string, type: "in" | "out", ts: number, wer: string | null = employeeId) =>
+  EVENTS.create({ employee_id: employeeId, type, ts }, wer);
+
 /** Stempel-Paare eines Mitarbeiters als bearbeitbare Sitzungen. */
 export async function sitzungenFuer(
   mitarbeiterId: string,
@@ -132,7 +147,7 @@ export async function sitzungenFuer(
   to = Infinity,
 ): Promise<Sitzung[]> {
   const evs = await alle<{ id: string; type: "in" | "out"; ts: number }>(
-    "SELECT id, type, ts FROM events WHERE mitarbeiter_id = ? ORDER BY ts ASC", mitarbeiterId,
+    "SELECT id, type, ts FROM time_events WHERE employee_id = ? ORDER BY ts ASC", mitarbeiterId,
   );
   const gesamt: Sitzung[] = [];
   let offen: Sitzung | null = null;
@@ -152,34 +167,29 @@ export async function sitzungenFuer(
 }
 
 const eventGehoertZu = async (eventId: string, mitarbeiterId: string) =>
-  !!(await eins("SELECT 1 AS x FROM events WHERE id = ? AND mitarbeiter_id = ?", eventId, mitarbeiterId));
+  !!(await eins("SELECT 1 AS x FROM time_events WHERE id = ? AND employee_id = ?", eventId, mitarbeiterId));
 
 /** Sitzung nachtragen (z. B. Stempeln vergessen). */
-export async function sitzungAnlegen(mitarbeiterId: string, start: number, end: number) {
-  const inId = randomUUID(), outId = randomUUID();
-  await lauf(
-    "INSERT INTO events (id, mitarbeiter_id, type, ts) VALUES (?, ?, 'in', ?), (?, ?, 'out', ?)",
-    inId, mitarbeiterId, start, outId, mitarbeiterId, end,
-  );
-  return { inId, outId, start, end };
+export async function sitzungAnlegen(mitarbeiterId: string, start: number, end: number, wer: string | null = mitarbeiterId) {
+  const a = await EVENTS.create({ employee_id: mitarbeiterId, type: "in", ts: start }, wer);
+  const b = await EVENTS.create({ employee_id: mitarbeiterId, type: "out", ts: end }, wer);
+  return { inId: a.id, outId: b.id, start, end };
 }
 
 /** Start/Ende einer Sitzung korrigieren. */
 export async function sitzungAendern(
   mitarbeiterId: string,
   s: { inId: string; outId: string | null; start: number; end: number | null },
+  wer: string | null = mitarbeiterId,
 ): Promise<boolean> {
   if (!(await eventGehoertZu(s.inId, mitarbeiterId))) return false;
   if (s.outId && !(await eventGehoertZu(s.outId, mitarbeiterId))) return false;
-  await lauf("UPDATE events SET ts = ? WHERE id = ?", s.start, s.inId);
+  await EVENTS.patch(s.inId, { ts: s.start }, wer);
   if (s.outId && s.end != null) {
-    await lauf("UPDATE events SET ts = ? WHERE id = ?", s.end, s.outId);
+    await EVENTS.patch(s.outId, { ts: s.end }, wer);
   } else if (!s.outId && s.end != null) {
     // Offene Sitzung bekommt nachträglich ein Ende.
-    await lauf(
-      "INSERT INTO events (id, mitarbeiter_id, type, ts) VALUES (?, ?, 'out', ?)",
-      randomUUID(), mitarbeiterId, s.end,
-    );
+    await EVENTS.create({ employee_id: mitarbeiterId, type: "out", ts: s.end }, wer);
   }
   return true;
 }
@@ -189,10 +199,11 @@ export async function sitzungLoeschen(
   mitarbeiterId: string,
   inId: string,
   outId: string | null,
+  wer: string | null = mitarbeiterId,
 ): Promise<boolean> {
   if (!(await eventGehoertZu(inId, mitarbeiterId))) return false;
   if (outId && !(await eventGehoertZu(outId, mitarbeiterId))) return false;
-  await lauf("DELETE FROM events WHERE id = ?", inId);
-  if (outId) await lauf("DELETE FROM events WHERE id = ?", outId);
+  await EVENTS.remove(inId, wer);
+  if (outId) await EVENTS.remove(outId, wer);
   return true;
 }

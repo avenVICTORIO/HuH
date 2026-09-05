@@ -5,7 +5,6 @@ import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { randomUUID } from "node:crypto";
 import { alle, eins, lauf, type Mitarbeiter } from "./db";
-import { hatCap } from "./auth";
 import * as live from "./live";
 import { karteInvalidieren } from "./site/karte";
 import { ENTITAETEN } from "./datenmodell";
@@ -20,6 +19,22 @@ export type SchemaZeile = {
 /** Ein Dokument: Fachfelder plus Meta `id`, `_erstellt`, `_aktualisiert` (Unterstrich: kein Fachfeld). */
 export type Dokument = { id: string; _erstellt: number; _aktualisiert: number } & Record<string, unknown>;
 export type Pruefung = { ok: true; data: Record<string, unknown> } | { ok: false; fehler: { pfad: string; meldung: string }[]; konflikt?: boolean };
+export type VerlaufZeile = {
+  seq: number; dokument_id: string; schema_id: string; aktion: "insert" | "update" | "delete";
+  data_alt: Record<string, unknown> | null; data_neu: Record<string, unknown> | null; wer: string | null; ts: number;
+};
+export type SchemaVerlaufZeile = {
+  seq: number; schema_id: string; aktion: "insert" | "update" | "delete";
+  alt: Record<string, unknown> | null; neu: Record<string, unknown> | null; wer: string | null; ts: number;
+};
+
+/**
+ * Akteur fuer die Historie: wird als Session-Variable `huh.user` gesetzt, die Verlaufs-Trigger
+ * lesen sie. Vor jedem Schreibzugriff aufrufen (Person-ID, Skill-Name oder "system").
+ */
+export async function alsWer(wer: string | null | undefined) {
+  await lauf("SELECT set_config('huh.user', ?, false)", wer ?? "");
+}
 
 /** DB-Fehler (z. B. Unique-Index) in eine lesbare Prüfantwort übersetzen. */
 function dbFehler(e: unknown): Pruefung {
@@ -53,9 +68,15 @@ export async function schemata(): Promise<(SchemaZeile & { anzahl: number })[]> 
   return rows.map((r) => ({ ...norm(r), anzahl: Number(r.anzahl) }));
 }
 
+const schemaCache = new Map<string, SchemaZeile>();
 export async function schema(id: string): Promise<SchemaZeile | null> {
+  const c = schemaCache.get(id);
+  if (c) return c;
   const r = await eins<Record<string, unknown>>("SELECT * FROM schemata WHERE id = ?", id);
-  return r ? norm(r) : null;
+  if (!r) return null;
+  const z = norm(r);
+  schemaCache.set(id, z);
+  return z;
 }
 
 /** Ist das ein gültiges JSON Schema? (kompiliert es) – liefert null oder Fehlertext. */
@@ -81,6 +102,7 @@ export async function schemaAnlegen(
     eingabe.id, eingabe.name.trim(), eingabe.beschreibung ?? null, JSON.stringify(eingabe.schema),
     eingabe.lesen ?? null, eingabe.schreiben ?? null, eingabe.signal ?? null, now, now,
   );
+  schemaCache.delete(eingabe.id);
   live.sende("alle", { typ: "daten" });
   return { ok: true, schema: (await schema(eingabe.id))! };
 }
@@ -101,6 +123,7 @@ export async function schemaAendern(
     neu.name, neu.beschreibung, JSON.stringify(neu.schema), neu.lesen, neu.schreiben, neu.signal, Date.now(), id,
   );
   cache.delete(`${id}@${alt.version}`);
+  schemaCache.delete(id);
   live.sende("alle", { typ: "daten" });
   return { ok: true, schema: (await schema(id))! };
 }
@@ -111,15 +134,77 @@ export async function schemaLoeschen(id: string): Promise<boolean> {
   if (!s || s.system) return false;
   await lauf("DELETE FROM dokumente WHERE schema_id = ?", id);
   await lauf("DELETE FROM schemata WHERE id = ?", id);
+  schemaCache.delete(id);
   live.sende("alle", { typ: "daten" });
   return true;
+}
+
+// ------------------------------------------------------------------ Historie
+
+const jsonb = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v) as Record<string, unknown> | null;
+
+/** Aenderungshistorie der Dokumente, neueste zuerst; optional auf Schema und/oder Dokument eingegrenzt. */
+export async function verlauf(filter: { schema?: string; dokument?: string } = {}, limit = 200, offset = 0): Promise<VerlaufZeile[]> {
+  const bed: string[] = ["1=1"], params: unknown[] = [];
+  if (filter.schema) { bed.push("schema_id = ?"); params.push(filter.schema); }
+  if (filter.dokument) { bed.push("dokument_id = ?"); params.push(filter.dokument); }
+  const rows = await alle<VerlaufZeile>(
+    `SELECT seq, dokument_id, schema_id, aktion, data_alt, data_neu, wer, ts FROM dokumente_verlauf WHERE ${bed.join(" AND ")} ORDER BY seq DESC LIMIT ? OFFSET ?`,
+    ...params, Math.min(Math.max(limit, 1), 1000), Math.max(offset, 0));
+  return rows.map((r) => ({ ...r, seq: Number(r.seq), ts: Number(r.ts), data_alt: jsonb(r.data_alt), data_neu: jsonb(r.data_neu) }));
+}
+
+/** Aenderungshistorie der Schemata, neueste zuerst. */
+export async function schemaVerlauf(schemaId?: string, limit = 200): Promise<SchemaVerlaufZeile[]> {
+  const rows = await alle<SchemaVerlaufZeile>(
+    `SELECT seq, schema_id, aktion, alt, neu, wer, ts FROM schemata_verlauf ${schemaId ? "WHERE schema_id = ?" : ""} ORDER BY seq DESC LIMIT ?`,
+    ...(schemaId ? [schemaId] : []), Math.min(Math.max(limit, 1), 1000));
+  return rows.map((r) => ({ ...r, seq: Number(r.seq), ts: Number(r.ts), alt: jsonb(r.alt), neu: jsonb(r.neu) }));
+}
+
+/**
+ * Stand VOR einem Verlaufseintrag wiederherstellen: nach `delete` wird das Dokument neu angelegt,
+ * nach `update` der alte Inhalt zurueckgeschrieben, nach `insert` das Dokument entfernt.
+ * Die Wiederherstellung selbst landet wieder in der Historie (Akteur ueber alsWer()).
+ */
+export async function wiederherstellen(seq: number): Promise<{ ok: true; dokument: Dokument | null } | { ok: false; fehler: string; konflikt?: boolean }> {
+  const v = (await alle<VerlaufZeile>("SELECT * FROM dokumente_verlauf WHERE seq = ?", seq))[0];
+  if (!v) return { ok: false, fehler: "Verlaufseintrag nicht gefunden" };
+  const s = await schema(v.schema_id);
+  if (!s) return { ok: false, fehler: "Schema existiert nicht mehr" };
+  const alt = jsonb(v.data_alt);
+  if (v.aktion === "insert") {
+    await loeschen(s, v.dokument_id);
+    return { ok: true, dokument: null };
+  }
+  const p = pruefen(s, alt ?? {});
+  if (!p.ok) return { ok: false, fehler: "Alter Stand passt nicht mehr zum aktuellen Schema: " + p.fehler.map((f) => `${f.pfad} ${f.meldung}`).join("; ") };
+  const jetzt = await lesen(s, v.dokument_id);
+  const r = jetzt ? await ersetzen(s, v.dokument_id, p.data) : await anlegen(s, p.data, v.dokument_id);
+  if (!r || !r.ok) return { ok: false, fehler: r ? r.fehler.map((f) => f.meldung).join("; ") : "nicht gefunden", konflikt: r ? r.konflikt : false };
+  return { ok: true, dokument: r.dokument };
+}
+
+/** Schema-Stand VOR einem Verlaufseintrag wiederherstellen (nur selbst angelegte Schemata werden neu angelegt/geloescht; System-Schemata nur inhaltlich). */
+export async function schemaWiederherstellen(seq: number): Promise<{ ok: true; schema: SchemaZeile | null } | { ok: false; fehler: string }> {
+  const v = (await alle<SchemaVerlaufZeile>("SELECT * FROM schemata_verlauf WHERE seq = ?", seq))[0];
+  if (!v) return { ok: false, fehler: "Verlaufseintrag nicht gefunden" };
+  const alt = jsonb(v.alt);
+  if (v.aktion === "insert") {
+    const ok = await schemaLoeschen(v.schema_id);
+    return ok ? { ok: true, schema: null } : { ok: false, fehler: "System-Schema kann nicht entfernt werden" };
+  }
+  if (!alt) return { ok: false, fehler: "Kein alter Stand vorhanden" };
+  const felder = { name: String(alt.name), beschreibung: (alt.beschreibung as string | null) ?? null, schema: jsonb(alt.schema) ?? {}, lesen: (alt.lesen as string | null) ?? null, schreiben: (alt.schreiben as string | null) ?? null, signal: (alt.signal as string | null) ?? null };
+  const r = (await schema(v.schema_id)) ? await schemaAendern(v.schema_id, felder) : await schemaAnlegen({ id: v.schema_id, ...felder });
+  return r.ok ? { ok: true, schema: r.schema } : { ok: false, fehler: r.fehler };
 }
 
 // ------------------------------------------------------------------ Rechte
 
 export const darf = (person: Mitarbeiter, s: SchemaZeile, was: "lesen" | "schreiben") => {
   const cap = s[was];
-  return !cap || hatCap(person, cap);
+  return !cap || !!person.caps?.includes("*") || !!person.caps?.includes(cap);
 };
 
 // ------------------------------------------------------------------ Validierung
@@ -213,4 +298,52 @@ export async function loeschen(s: SchemaZeile, id: string): Promise<boolean> {
   const r = await lauf("DELETE FROM dokumente WHERE schema_id = ? AND id = ?", s.id, id);
   if (r.changes) signal(s);
   return r.changes > 0;
+}
+
+// ------------------------------------------------------------------ Server-Zugriff (SSOT fuer Fachdaten-Schreibzugriffe)
+
+export class DatenFehler extends Error {
+  status: number;
+  constructor(p: Extract<Pruefung, { ok: false }>) {
+    super(p.fehler.map((f) => (f.pfad ? `${f.pfad}: ` : "") + f.meldung).join("; "));
+    this.status = p.konflikt ? 409 : 400;
+  }
+}
+
+/**
+ * Typisierter Zugriff auf eine Entitaet fuer Server-Module: jeder Schreibzugriff laeuft durch
+ * Schema-Validierung, Historie (Akteur) und Live-Signal. Komplexe Lesezugriffe (Joins,
+ * Aggregationen) gehen weiter per SQL auf die englischen Views – dieselben Daten.
+ */
+export function store<T extends Record<string, unknown>>(schemaId: string) {
+  const s = async () => {
+    const z = await schema(schemaId);
+    if (!z) throw new Error(`Schema ${schemaId} fehlt`);
+    return z;
+  };
+  type Doc = T & Dokument;
+  return {
+    id: schemaId,
+    list: async (filter: Record<string, string> = {}, limit = 1000) => (await liste(await s(), filter, limit)) as Doc[],
+    get: async (id: string) => (await lesen(await s(), id)) as Doc | null,
+    /** Anlegen; wirft DatenFehler bei Schema-/Eindeutigkeitsverstoss. */
+    create: async (data: Partial<T>, wer?: string | null, id?: string) => {
+      await alsWer(wer);
+      const r = await anlegen(await s(), data, id);
+      if (!r.ok) throw new DatenFehler(r);
+      return r.dokument as Doc;
+    },
+    /** Felder aendern; null wenn es das Dokument nicht gibt. */
+    patch: async (id: string, patch: Partial<T>, wer?: string | null) => {
+      await alsWer(wer);
+      const r = await aendern(await s(), id, patch);
+      if (r === null) return null;
+      if (!r.ok) throw new DatenFehler(r);
+      return r.dokument as Doc;
+    },
+    remove: async (id: string, wer?: string | null) => {
+      await alsWer(wer);
+      return loeschen(await s(), id);
+    },
+  };
 }

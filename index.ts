@@ -5,7 +5,7 @@ import { sessionsFor, durationMs, clip, type Ev } from "./time";
 import { terminalPage } from "./terminal";
 import { dashboardPage } from "./dashboard";
 import { homePage } from "./site/home";
-import { karteSeite, karteInvalidieren } from "./site/karte";
+import { karteSeite } from "./site/karte";
 import { KAPITEL_META } from "./site/karte-daten";
 import { reservierungPage } from "./site/reservierung";
 import {
@@ -36,9 +36,27 @@ import {
   sitzungAnlegen,
   sitzungLoeschen,
   sitzungenFuer,
+  letztesEvent,
+  eventAnlegen,
   tokenFuer,
   wer,
 } from "./auth";
+
+// SSOT-Zugriffe (Dokumentenspeicher): Schreiben validiert, mit Historie und Live-Signal.
+type Shift = { date: string; role: string; start: string; end: string; employee_id: string | null; note: string | null; rule_id: string | null };
+type ShiftRule = { role: string; start: string; end: string; weekdays: string; count: number; rhythm: string; start_date: string | null; active: number; sort_order: number };
+type MenuGroup = { chapter: string; title: string; columns: string | null; footnote: string | null; sort_order: number };
+type MenuItem = { group_id: string; name: string; text: string | null; option: string | null; tags: string | null; star: number; prices: string | null; sort_order: number; active: number };
+type Inquiry = { name: string; email: string; phone: string | null; occasion: string | null; date: string | null; guests: number | null; note: string | null; status: string; created_at: number };
+const SHIFTS = dok.store<Shift>("shifts");
+const RULES = dok.store<ShiftRule>("shift_rules");
+const GROUPS = dok.store<MenuGroup>("menu_groups");
+const ITEMS = dok.store<MenuItem>("menu_items");
+const INQUIRIES = dok.store<Inquiry>("inquiries");
+
+/** Store-Fehler (Schema-/Eindeutigkeitsverstoss) als HTTP-Antwort. */
+const datenFehler = (e: unknown) =>
+  e instanceof dok.DatenFehler ? Response.json({ fehler: e.message }, { status: e.status }) : null;
 
 const html = (s: string, status = 200) =>
   new Response(s, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
@@ -77,65 +95,65 @@ const rollePasst = (m: Mitarbeiter, schichtRolle: string) =>
 /** Feldprüfung einer Karten-Gruppe. */
 function karteGruppeFelder(b: Record<string, unknown> | null) {
   if (!b) return { fehler: "Ungültige Anfrage" };
-  const kapitel = text(b.kapitel, 30);
-  const titel = text(b.titel, 120);
-  if (!KAPITEL_META.some((k) => k.id === kapitel)) return { fehler: "Unbekanntes Kapitel." };
-  if (!titel) return { fehler: "Bitte einen Gruppentitel angeben." };
+  const chapter = text(b.chapter, 30);
+  const title = text(b.title, 120);
+  if (!KAPITEL_META.some((k) => k.id === chapter)) return { fehler: "Unbekanntes Kapitel." };
+  if (!title) return { fehler: "Bitte einen Gruppentitel angeben." };
   return {
-    kapitel,
-    titel,
-    spalten: text(b.spalten, 60) || null,
-    fussnote: text(b.fussnote, 300) || null,
+    chapter,
+    title,
+    columns: text(b.columns, 60) || null,
+    footnote: text(b.footnote, 300) || null,
   };
 }
 
 /** Feldprüfung einer Karten-Position. */
 async function kartePositionFelder(b: Record<string, unknown> | null) {
   if (!b) return { fehler: "Ungültige Anfrage" } as const;
-  const gruppe_id = text(b.gruppe_id, 64);
+  const group_id = text(b.group_id, 64);
   const name = text(b.name, 160);
   if (!name) return { fehler: "Bitte einen Namen angeben." } as const;
-  if (!(await eins("SELECT 1 AS x FROM karte_gruppen WHERE id = ?", gruppe_id))) {
+  if (!(await GROUPS.get(group_id))) {
     return { fehler: "Gruppe nicht gefunden." } as const;
   }
   const tags = text(b.tags, 20)
     .split(",").map((t) => t.trim()).filter((t) => ["v", "vg", "gf"].includes(t)).join(",");
   return {
-    gruppe_id,
+    group_id,
     name,
     text: text(b.text, 500) || null,
     option: text(b.option, 200) || null,
     tags: tags || null,
-    stern: b.stern ? 1 : 0,
-    preise: text(b.preise, 60) || null,
-    aktiv: b.aktiv === 0 || b.aktiv === false ? 0 : 1,
+    star: b.star ? 1 : 0,
+    prices: text(b.prices, 60) || null,
+    active: b.active === 0 || b.active === false ? 0 : 1,
   };
 }
 
 /** Feldprüfung einer wiederkehrenden Schicht-Regel. */
 function regelFelder(b: Record<string, unknown> | null) {
   if (!b) return { fehler: "Ungültige Anfrage" };
-  const rolle = text(b.rolle, 40);
-  const von = text(b.von, 5), bis = text(b.bis, 5);
-  const anzahl = Number(b.anzahl ?? 1);
-  const rhythmus = text(b.rhythmus, 20) || "woechentlich";
-  const tage = Array.isArray(b.tage) ? b.tage.map(Number).filter((t) => t >= 0 && t <= 6) : [];
-  if (!rolle) return { fehler: "Bitte eine Rolle wählen." };
-  if (!/^\d{2}:\d{2}$/.test(von) || !/^\d{2}:\d{2}$/.test(bis)) {
+  const role = text(b.role, 40);
+  const start = text(b.start, 5), end = text(b.end, 5);
+  const count = Number(b.count ?? 1);
+  const rhythm = text(b.rhythm, 20) || "woechentlich";
+  const weekdays = Array.isArray(b.weekdays) ? b.weekdays.map(Number).filter((t) => t >= 0 && t <= 6) : [];
+  if (!role) return { fehler: "Bitte eine Rolle wählen." };
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) {
     return { fehler: "Bitte Zeiten als HH:MM angeben." };
   }
-  if (!tage.length) return { fehler: "Bitte mindestens einen Wochentag wählen." };
-  if (!Number.isInteger(anzahl) || anzahl < 1 || anzahl > 10) {
+  if (!weekdays.length) return { fehler: "Bitte mindestens einen Wochentag wählen." };
+  if (!Number.isInteger(count) || count < 1 || count > 10) {
     return { fehler: "Anzahl muss zwischen 1 und 10 liegen." };
   }
-  if (!["woechentlich", "zweiwoechentlich"].includes(rhythmus)) {
+  if (!["woechentlich", "zweiwoechentlich"].includes(rhythm)) {
     return { fehler: "Unbekannter Rhythmus." };
   }
-  const start = res.istDatum(b.start) ? (b.start as string) : null;
-  if (rhythmus === "zweiwoechentlich" && !start) {
+  const start_date = res.istDatum(b.start_date) ? (b.start_date as string) : null;
+  if (rhythm === "zweiwoechentlich" && !start_date) {
     return { fehler: "Zweiwöchentliche Regeln brauchen ein Startdatum." };
   }
-  return { rolle, von, bis, tage: [...new Set(tage)].sort().join(","), anzahl, rhythmus, start };
+  return { role, start, end, weekdays: [...new Set(weekdays)].sort().join(","), count, rhythm, start_date };
 }
 
 /** Kalenderwochen-Index eines Datums (Referenz: ein fester Montag) – für den 2-Wochen-Rhythmus. */
@@ -153,11 +171,8 @@ function wochenIndex(datum: string): number {
  * Besetzte Schichten bleiben immer stehen.
  */
 async function schichtenGenerieren(von: string, bis: string): Promise<{ angelegt: number; entfernt: number }> {
-  const regeln = await alle<{
-    id: string; rolle: string; von: string; bis: string;
-    tage: string; anzahl: number; rhythmus: string; start: string | null; aktiv: number;
-  }>("SELECT * FROM schicht_regeln");
-  const regelnAktiv = regeln.filter((r) => r.aktiv);
+  const regeln = await alle<ShiftRule & { id: string }>("SELECT * FROM shift_rules");
+  const regelnAktiv = regeln.filter((r) => r.active);
   let angelegt = 0, entfernt = 0;
 
   const [y, m, d] = von.split("-").map(Number);
@@ -166,9 +181,9 @@ async function schichtenGenerieren(von: string, bis: string): Promise<{ angelegt
     `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 
   const giltAm = (r: (typeof regeln)[number], datum: string, wt: number) => {
-    if (!r.aktiv || !r.tage.split(",").map(Number).includes(wt)) return false;
-    if (r.rhythmus === "zweiwoechentlich" && r.start) {
-      if ((((wochenIndex(datum) - wochenIndex(r.start)) % 2) + 2) % 2 !== 0) return false;
+    if (!r.active || !r.weekdays.split(",").map(Number).includes(wt)) return false;
+    if (r.rhythm === "zweiwoechentlich" && r.start_date) {
+      if ((((wochenIndex(datum) - wochenIndex(r.start_date)) % 2) + 2) % 2 !== 0) return false;
     }
     return true;
   };
@@ -179,30 +194,30 @@ async function schichtenGenerieren(von: string, bis: string): Promise<{ angelegt
 
     // 0) Datenhygiene: Zuweisungen lösen, deren Rolle nicht (mehr) zur Schicht passt
     //    (z. B. Service-Kraft auf Koch-Slot aus Altbeständen). Admins dürfen überall.
-    const besetzte = await alle<{ id: string; rolle: string; role: string; capabilities: string | null }>(
-      `SELECT s.id, s.rolle, m.role, r.capabilities
-         FROM schichten s
-         JOIN mitarbeiter m ON m.id = s.mitarbeiter_id
+    const besetzte = await alle<{ id: string; shift_role: string; role: string; capabilities: string | null }>(
+      `SELECT s.id, s.role AS shift_role, m.role, r.capabilities
+         FROM shifts s
+         JOIN mitarbeiter m ON m.id = s.employee_id
          LEFT JOIN rollen r ON r.name = m.role
-        WHERE s.datum = ?`, datum,
+        WHERE s.date = ?`, datum,
     );
     for (const s of besetzte) {
       const caps = (s.capabilities ?? "").split(",").map((c) => c.trim()).filter(Boolean);
-      if (!rollePasst({ role: s.role, caps } as Mitarbeiter, s.rolle)) {
-        await lauf("UPDATE schichten SET mitarbeiter_id = NULL WHERE id = ?", s.id);
+      if (!rollePasst({ role: s.role, caps } as Mitarbeiter, s.shift_role)) {
+        await SHIFTS.patch(s.id, { employee_id: null }, "system");
       }
     }
 
     // 1) Verwaiste Slots entfernen – ohne Regel, mit gelöschter/inaktiver Regel oder
     //    an einem Tag, den die Regel nicht mehr abdeckt. Immer nur unbesetzte.
-    const vorhandene = await alle<{ id: string; regel_id: string | null; mitarbeiter_id: string | null }>(
-      "SELECT id, regel_id, mitarbeiter_id FROM schichten WHERE datum = ?", datum,
+    const vorhandene = await alle<{ id: string; rule_id: string | null; employee_id: string | null }>(
+      "SELECT id, rule_id, employee_id FROM shifts WHERE date = ?", datum,
     );
     for (const s of vorhandene) {
-      if (s.mitarbeiter_id) continue;
-      const r = s.regel_id ? regeln.find((x) => x.id === s.regel_id) : undefined;
+      if (s.employee_id) continue;
+      const r = s.rule_id ? regeln.find((x) => x.id === s.rule_id) : undefined;
       if (!r || !giltAm(r, datum, wt)) {
-        await lauf("DELETE FROM schichten WHERE id = ?", s.id);
+        await SHIFTS.remove(s.id, "system");
         entfernt++;
       }
     }
@@ -210,20 +225,17 @@ async function schichtenGenerieren(von: string, bis: string): Promise<{ angelegt
     // 2) Je Regel auf Soll-Anzahl bringen: auffüllen oder unbesetzte Überzählige abbauen.
     for (const r of regelnAktiv) {
       if (!giltAm(r, datum, wt)) continue;
-      const slots = await alle<{ id: string; mitarbeiter_id: string | null }>(
-        "SELECT id, mitarbeiter_id FROM schichten WHERE datum = ? AND regel_id = ?", datum, r.id,
+      const slots = await alle<{ id: string; employee_id: string | null }>(
+        "SELECT id, employee_id FROM shifts WHERE date = ? AND rule_id = ?", datum, r.id,
       );
-      for (let i = slots.length; i < r.anzahl; i++) {
-        await lauf(
-          "INSERT INTO schichten (id, datum, rolle, von, bis, mitarbeiter_id, notiz, regel_id) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)",
-          randomUUID(), datum, r.rolle, r.von, r.bis, r.id,
-        );
+      for (let i = slots.length; i < r.count; i++) {
+        await SHIFTS.create({ date: datum, role: r.role, start: r.start, end: r.end, employee_id: null, note: null, rule_id: r.id }, "system");
         angelegt++;
       }
-      const frei = slots.filter((s) => !s.mitarbeiter_id);
-      for (let i = slots.length; i > r.anzahl && frei.length; i--) {
+      const frei = slots.filter((s) => !s.employee_id);
+      for (let i = slots.length; i > r.count && frei.length; i--) {
         const opfer = frei.pop()!;
-        await lauf("DELETE FROM schichten WHERE id = ?", opfer.id);
+        await SHIFTS.remove(opfer.id, "system");
         entfernt++;
       }
     }
@@ -235,16 +247,16 @@ async function schichtenGenerieren(von: string, bis: string): Promise<{ angelegt
 /** Feldprüfung eines Schicht-Slots. */
 function schichtFelder(b: Record<string, unknown> | null) {
   if (!b) return { fehler: "Ungültige Anfrage" };
-  const datum = text(b.datum, 10);
-  const rolle = text(b.rolle, 40);
-  const von = text(b.von, 5);
-  const bis = text(b.bis, 5);
-  if (!res.istDatum(datum)) return { fehler: "Bitte ein gültiges Datum wählen." };
-  if (!rolle) return { fehler: "Bitte eine Rolle angeben (z. B. Koch, Service)." };
-  if (!/^\d{2}:\d{2}$/.test(von) || !/^\d{2}:\d{2}$/.test(bis)) {
+  const date = text(b.date, 10);
+  const role = text(b.role, 40);
+  const start = text(b.start, 5);
+  const end = text(b.end, 5);
+  if (!res.istDatum(date)) return { fehler: "Bitte ein gültiges Datum wählen." };
+  if (!role) return { fehler: "Bitte eine Rolle angeben (z. B. Koch, Service)." };
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) {
     return { fehler: "Bitte Zeiten als HH:MM angeben." };
   }
-  return { datum, rolle, von, bis, notiz: text(b.notiz, 300) || null };
+  return { date, role, start, end, note: text(b.note, 300) || null };
 }
 
 /**
@@ -253,27 +265,27 @@ function schichtFelder(b: Record<string, unknown> | null) {
  */
 function teamFelder(b: Record<string, unknown>) {
   const name = text(b.name, 120);
-  const datum = text(b.datum, 10);
-  const zeit = text(b.zeit, 5);
-  const personen = Number(b.personen);
+  const date = text(b.date, 10);
+  const time = text(b.time, 5);
+  const guests = Number(b.guests);
   if (!name) return { fehler: "Bitte einen Namen angeben." };
-  if (!res.istDatum(datum)) return { fehler: "Bitte ein gültiges Datum wählen." };
-  if (!/^\d{2}:\d{2}$/.test(zeit)) return { fehler: "Bitte eine Uhrzeit (HH:MM) angeben." };
-  if (!Number.isInteger(personen) || personen < 1) {
+  if (!res.istDatum(date)) return { fehler: "Bitte ein gültiges Datum wählen." };
+  if (!/^\d{2}:\d{2}$/.test(time)) return { fehler: "Bitte eine Uhrzeit (HH:MM) angeben." };
+  if (!Number.isInteger(guests) || guests < 1) {
     return { fehler: "Bitte die Personenzahl angeben." };
   }
-  const bereich = (text(b.bereich, 10) || "drinnen") as res.Bereich;
-  if (!res.BEREICHE.includes(bereich)) return { fehler: "Unbekannter Bereich" };
+  const area = (text(b.area, 10) || "drinnen") as res.Bereich;
+  if (!res.BEREICHE.includes(area)) return { fehler: "Unbekannter Bereich" };
   return {
     name,
-    email: text(b.email, 160) || "-",
-    telefon: text(b.telefon, 40) || "-",
-    datum,
-    zeit,
-    personen,
-    bereich,
-    anlass: text(b.anlass, 80) || null,
-    notiz: text(b.notiz, 600) || null,
+    email: text(b.email, 160) || null,
+    phone: text(b.phone, 40) || null,
+    date,
+    time,
+    guests,
+    area,
+    occasion: text(b.occasion, 80) || null,
+    note: text(b.note, 600) || null,
   };
 }
 
@@ -289,10 +301,7 @@ const byMaCode = (code: string) =>
 const byPersonalnr = (nr: string) =>
   eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE personalnr = ?`, nr);
 
-const lastEvent = (id: string) =>
-  eins<{ type: "in" | "out"; ts: number }>(
-    "SELECT type, ts FROM events WHERE mitarbeiter_id = ? ORDER BY ts DESC LIMIT 1", id,
-  );
+const lastEvent = letztesEvent;
 
 /**
  * Login-Antwort fürs Terminal: Identität + Schichtstatus + offene Klärung.
@@ -335,14 +344,14 @@ function lokalTs(datum: string, zeit: string): number {
 
 /** Geplantes Schichtfenster (min Beginn, max Ende) eines Mitarbeiters an einem Tag. */
 async function schichtFenster(mitarbeiterId: string, datum: string) {
-  const schichten = await alle<{ von: string; bis: string }>(
-    "SELECT von, bis FROM schichten WHERE mitarbeiter_id = ? AND datum = ?", mitarbeiterId, datum,
+  const schichten = await alle<{ start: string; end: string }>(
+    'SELECT start, "end" FROM shifts WHERE employee_id = ? AND date = ?', mitarbeiterId, datum,
   );
   if (!schichten.length) return null;
   let start = Infinity, ende = -Infinity;
   for (const s of schichten) {
-    start = Math.min(start, lokalTs(datum, s.von));
-    let bis = lokalTs(datum, s.bis);
+    start = Math.min(start, lokalTs(datum, s.start));
+    let bis = lokalTs(datum, s.end);
     if (bis <= start) bis += 86400000; // Schicht über Mitternacht
     ende = Math.max(ende, bis);
   }
@@ -432,41 +441,41 @@ const routen = {
     // ---- Reservierung: freie Zeiten eines Tages ----
     "/api/verfuegbarkeit": async (req) => {
       const q = new URL(req.url).searchParams;
-      const datum = q.get("datum") ?? "";
-      const personen = Math.max(1, Number(q.get("personen") ?? 2) || 2);
-      if (!res.istDatum(datum)) {
+      const date = q.get("date") ?? "";
+      const guests = Math.max(1, Number(q.get("guests") ?? 2) || 2);
+      if (!res.istDatum(date)) {
         return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
       }
-      const [y, m, d] = datum.split("-").map(Number);
+      const [y, m, d] = date.split("-").map(Number);
       if (!OEFFNUNG[new Date(y, m - 1, d).getDay()]) {
         return Response.json({
-          datum,
-          ruhetag: true,
+          date,
+          closed: true,
           slots: [],
-          hinweis: `${res.tagName(datum)} ist unser Ruhetag – wir freuen uns an jedem anderen Tag auf euch.`,
+          hinweis: `${res.tagName(date)} ist unser Ruhetag – wir freuen uns an jedem anderen Tag auf euch.`,
         });
       }
-      const bereich = (q.get("bereich") ?? "drinnen") as res.Bereich;
-      if (!res.BEREICHE.includes(bereich)) {
+      const area = (q.get("area") ?? "drinnen") as res.Bereich;
+      if (!res.BEREICHE.includes(area)) {
         return Response.json({ fehler: "Unbekannter Bereich" }, { status: 400 });
       }
       return Response.json({
-        datum,
-        ruhetag: false,
-        personen,
-        bereich,
-        slots: await res.slotsFuer(datum, personen, bereich),
+        date,
+        closed: false,
+        guests,
+        area,
+        slots: await res.slotsFuer(date, guests, area),
       });
     },
 
     // ---- Reservierung anlegen (Gast) / Tagesliste (Team) ----
     "/api/reservierungen": {
       GET: nurReserv(async (req) => {
-        const datum = new URL(req.url).searchParams.get("datum");
-        if (datum && !res.istDatum(datum)) {
+        const date = new URL(req.url).searchParams.get("date");
+        if (date && !res.istDatum(date)) {
           return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
         }
-        return Response.json(datum ? await res.fuerTag(datum) : await res.abHeute());
+        return Response.json(date ? await res.fuerTag(date) : await res.abHeute());
       }),
       POST: async (req) => {
         const b = await req.json().catch(() => null);
@@ -474,29 +483,31 @@ const routen = {
 
         const name = text(b.name, 120);
         const email = text(b.email, 160);
-        const telefon = text(b.telefon, 40);
-        const personen = Number(b.personen);
-        if (!name || !email || !telefon) {
+        const phone = text(b.phone, 40);
+        const guests = Number(b.guests);
+        if (!name || !email || !phone) {
           return Response.json({ fehler: "Bitte Name, E-Mail und Telefon angeben." }, { status: 400 });
         }
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
           return Response.json({ fehler: "Bitte eine gültige E-Mail-Adresse angeben." }, { status: 400 });
         }
 
-        const bereich = (text(b.bereich, 10) || "drinnen") as res.Bereich;
-        if (!res.BEREICHE.includes(bereich)) {
+        const area = (text(b.area, 10) || "drinnen") as res.Bereich;
+        if (!res.BEREICHE.includes(area)) {
           return Response.json({ fehler: "Unbekannter Bereich" }, { status: 400 });
         }
-        const pruefung = await res.pruefe(text(b.datum, 10), text(b.zeit, 5), personen, bereich);
+        const pruefung = await res.pruefe(text(b.date, 10), text(b.time, 5), guests, area);
         if (!pruefung.ok) return Response.json({ fehler: pruefung.fehler }, { status: 409 });
 
-        const zeile = await res.anlegen({
-          name, email, telefon,
-          datum: b.datum, zeit: b.zeit, personen, bereich,
-          anlass: text(b.anlass, 80) || null,
-          notiz: text(b.notiz, 600) || null,
-        });
-        return Response.json(zeile, { status: 201 });
+        try {
+          const zeile = await res.anlegen({
+            name, email, phone,
+            date: b.date, time: b.time, guests, area,
+            occasion: text(b.occasion, 80) || null,
+            note: text(b.note, 600) || null,
+          });
+          return Response.json(zeile, { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       },
     },
 
@@ -518,40 +529,42 @@ const routen = {
 
     // ---- Team: Reservierung anlegen (Telefon/Walk-in – nur Formatprüfung) ----
     "/api/team/reservierungen": {
-      POST: nurReserv(async (req) => {
+      POST: nurReserv(async (req, ich) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültige Anfrage" }, { status: 400 });
         const daten = teamFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const zeile = await res.anlegen({ ...daten, status: "bestaetigt" });
-        return Response.json(zeile, { status: 201 });
+        try {
+          const zeile = await res.anlegen({ ...daten, status: "bestaetigt" }, ich.id);
+          return Response.json(zeile, { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
     },
 
     // ---- Team: Status setzen, bearbeiten, löschen ----
     "/api/team/reservierungen/:id": {
-      PATCH: nurReserv(async (req) => {
+      PATCH: nurReserv(async (req, ich) => {
         const { status } = (await req.json().catch(() => ({}))) as { status?: string };
         const erlaubt = ["offen", "bestaetigt", "abgesagt", "erledigt"] as const;
         if (!erlaubt.includes(status as never)) {
           return Response.json({ fehler: "Unbekannter Status" }, { status: 400 });
         }
-        if (!(await res.statusSetzen(req.params.id, status as res.Status))) {
+        if (!(await res.statusSetzen(req.params.id, status as res.Status, ich.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
         return Response.json({ id: req.params.id, status });
       }),
-      PUT: nurReserv(async (req) => {
+      PUT: nurReserv(async (req, ich) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültige Anfrage" }, { status: 400 });
         const daten = teamFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const zeile = await res.aktualisieren(req.params.id, daten);
+        const zeile = await res.aktualisieren(req.params.id, daten, ich.id);
         if (!zeile) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json(zeile);
       }),
-      DELETE: nurReserv(async (req) => {
-        if (!(await res.loeschen(req.params.id))) {
+      DELETE: nurReserv(async (req, ich) => {
+        if (!(await res.loeschen(req.params.id, ich.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
         return new Response(null, { status: 204 });
@@ -562,7 +575,7 @@ const routen = {
     "/api/meine-schichten": nurTeam(async (req, ich) =>
       Response.json(
         await alle(
-          "SELECT * FROM schichten WHERE mitarbeiter_id = ? AND datum >= ? ORDER BY datum, von",
+          "SELECT * FROM shifts WHERE employee_id = ? AND date >= ? ORDER BY date, start",
           ich.id, res.alsDatum(new Date()),
         ),
       ),
@@ -588,9 +601,9 @@ const routen = {
 
     // ---- Team: Kennzahlen eines Tages ----
     "/api/reservierungen-uebersicht": nurReserv(async (req) => {
-      const datum = new URL(req.url).searchParams.get("datum") ?? res.alsDatum(new Date());
-      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
-      return Response.json(await res.tagesUebersicht(datum));
+      const date = new URL(req.url).searchParams.get("date") ?? res.alsDatum(new Date());
+      if (!res.istDatum(date)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await res.tagesUebersicht(date));
     }),
 
     // ---- Schichtplanung (Admin, v1): Vorlage einfügen, Slots pflegen, Team zuweisen ----
@@ -598,43 +611,40 @@ const routen = {
       // ?von=&bis= liefert eine ganze Woche, ?datum= einen einzelnen Tag.
       GET: nurSchicht(async (req) => {
         const q = new URL(req.url).searchParams;
-        const von = q.get("von"), bis = q.get("bis");
+        const from = q.get("from"), to = q.get("to");
         // Anzeige-Reihenfolge folgt der Vorlage (Regel-Sortierung); Rest hinten an.
-        const sql = `SELECT s.*, m.name AS mitarbeiter_name
-                       FROM schichten s
-                       LEFT JOIN mitarbeiter m ON m.id = s.mitarbeiter_id
-                       LEFT JOIN schicht_regeln r ON r.id = s.regel_id`;
-        const reihung = "COALESCE(r.sortierung, 9999), s.von, s.rolle";
-        if (von && bis) {
-          if (!res.istDatum(von) || !res.istDatum(bis)) {
+        const sql = `SELECT s.*, m.name AS employee_name
+                       FROM shifts s
+                       LEFT JOIN mitarbeiter m ON m.id = s.employee_id
+                       LEFT JOIN shift_rules r ON r.id = s.rule_id`;
+        const reihung = "COALESCE(r.sort_order, 9999), s.start, s.role";
+        if (from && to) {
+          if (!res.istDatum(from) || !res.istDatum(to)) {
             return Response.json({ fehler: "Ungültiger Zeitraum" }, { status: 400 });
           }
           // Die Vorlage ist SSOT: jede angezeigte Woche wird automatisch abgeglichen –
           // Regel-Änderungen wirken so ohne manuellen Knopf.
-          await schichtenGenerieren(von, bis);
+          await schichtenGenerieren(from, to);
           return Response.json(
-            await alle(`${sql} WHERE s.datum >= ? AND s.datum <= ? ORDER BY s.datum, ${reihung}`, von, bis),
+            await alle(`${sql} WHERE s.date >= ? AND s.date <= ? ORDER BY s.date, ${reihung}`, from, to),
           );
         }
-        const datum = q.get("datum") ?? res.alsDatum(new Date());
-        if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+        const date = q.get("date") ?? res.alsDatum(new Date());
+        if (!res.istDatum(date)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
         return Response.json(
-          await alle(`${sql} WHERE s.datum = ? ORDER BY ${reihung}`, datum),
+          await alle(`${sql} WHERE s.date = ? ORDER BY ${reihung}`, date),
         );
       }),
-      POST: nurSchicht(async (req) => {
+      POST: nurSchicht(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = schichtFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        if (!(await rolleImKatalog(daten.rolle))) {
+        if (!(await rolleImKatalog(daten.role))) {
           return Response.json({ fehler: "Unbekannte Rolle – bitte aus dem Katalog wählen." }, { status: 400 });
         }
-        const zeile = { id: randomUUID(), ...daten, mitarbeiter_id: null };
-        await lauf(
-          "INSERT INTO schichten (id, datum, rolle, von, bis, mitarbeiter_id, notiz) VALUES (?, ?, ?, ?, ?, NULL, ?)",
-          zeile.id, zeile.datum, zeile.rolle, zeile.von, zeile.bis, zeile.notiz,
-        );
-        return Response.json(zeile, { status: 201 });
+        try {
+          return Response.json(await SHIFTS.create({ ...daten, employee_id: null, rule_id: null }, ich.id), { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
     },
 
@@ -642,67 +652,60 @@ const routen = {
     "/api/schichten/generieren": {
       POST: nurSchicht(async (req) => {
         const b = await req.json().catch(() => null);
-        const von = text(b?.von, 10), bis = text(b?.bis, 10) || von;
-        if (!res.istDatum(von) || !res.istDatum(bis) || bis < von) {
+        const from = text(b?.from, 10), to = text(b?.to, 10) || from;
+        if (!res.istDatum(from) || !res.istDatum(to) || to < from) {
           return Response.json({ fehler: "Ungültiger Zeitraum" }, { status: 400 });
         }
-        return Response.json({ ok: true, ...(await schichtenGenerieren(von, bis)) }, { status: 201 });
+        return Response.json({ ok: true, ...(await schichtenGenerieren(from, to)) }, { status: 201 });
       }),
     },
 
     // ---- Wiederkehrende Schicht-Regeln (Admin) ----
     "/api/schicht-regeln": {
       GET: nurSchicht(async () =>
-        Response.json(await alle("SELECT * FROM schicht_regeln ORDER BY sortierung, von, rolle")),
+        Response.json(await alle("SELECT * FROM shift_rules ORDER BY sort_order, start, role")),
       ),
-      POST: nurSchicht(async (req) => {
+      POST: nurSchicht(async (req, ich) => {
         const daten = regelFelder(await req.json().catch(() => null));
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        if (!(await rolleImKatalog(daten.rolle))) {
+        if (!(await rolleImKatalog(daten.role))) {
           return Response.json({ fehler: "Unbekannte Rolle – bitte aus dem Katalog wählen." }, { status: 400 });
         }
-        const max = await eins<{ m: number | null }>("SELECT MAX(sortierung) AS m FROM schicht_regeln");
-        const zeile = { id: randomUUID(), ...daten, aktiv: 1, sortierung: Number(max?.m ?? 0) + 1 };
-        await lauf(
-          "INSERT INTO schicht_regeln (id, rolle, von, bis, tage, anzahl, rhythmus, start, aktiv, sortierung) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
-          zeile.id, zeile.rolle, zeile.von, zeile.bis, zeile.tage, zeile.anzahl, zeile.rhythmus, zeile.start, zeile.sortierung,
-        );
-        return Response.json(zeile, { status: 201 });
+        const max = await eins<{ m: number | null }>("SELECT MAX(sort_order) AS m FROM shift_rules");
+        try {
+          return Response.json(await RULES.create({ ...daten, active: 1, sort_order: Number(max?.m ?? 0) + 1 }, ich.id), { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
     },
 
     // Reihenfolge der Vorlage per Drag & Drop: Array von Regel-IDs = neue Sortierung.
     "/api/schicht-regeln-reihenfolge": {
-      PUT: nurSchicht(async (req) => {
+      PUT: nurSchicht(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
-        for (let i = 0; i < ids.length; i++) {
-          await lauf("UPDATE schicht_regeln SET sortierung = ? WHERE id = ?", i + 1, ids[i]);
-        }
+        for (let i = 0; i < ids.length; i++) await RULES.patch(ids[i], { sort_order: i + 1 }, ich.id);
         return Response.json({ ok: true });
       }),
     },
     "/api/schicht-regeln/:id": {
-      PUT: nurSchicht(async (req) => {
+      PUT: nurSchicht(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = regelFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        if (!(await rolleImKatalog(daten.rolle))) {
+        if (!(await rolleImKatalog(daten.role))) {
           return Response.json({ fehler: "Unbekannte Rolle – bitte aus dem Katalog wählen." }, { status: 400 });
         }
-        const aktiv = b?.aktiv === 0 || b?.aktiv === false ? 0 : 1;
-        const r = await lauf(
-          "UPDATE schicht_regeln SET rolle = ?, von = ?, bis = ?, tage = ?, anzahl = ?, rhythmus = ?, start = ?, aktiv = ? WHERE id = ?",
-          daten.rolle, daten.von, daten.bis, daten.tage, daten.anzahl, daten.rhythmus, daten.start, aktiv, req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        return Response.json({ id: req.params.id, ...daten, aktiv });
+        const active = b?.active === 0 || b?.active === false ? 0 : 1;
+        try {
+          const r = await RULES.patch(req.params.id, { ...daten, active }, ich.id);
+          if (!r) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+          return Response.json(r);
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
-      DELETE: nurSchicht(async (req) => {
+      DELETE: nurSchicht(async (req, ich) => {
         // Bereits erzeugte Schichten bleiben stehen – nur die Regel verschwindet.
-        const r = await lauf("DELETE FROM schicht_regeln WHERE id = ?", req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        if (!(await RULES.remove(req.params.id, ich.id))) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
       }),
     },
@@ -711,71 +714,67 @@ const routen = {
       // Zuweisung per Drag & Drop: mitarbeiter_id setzen oder (null) lösen.
       // Regeln: passende Rolle (Admins überall), Slot muss frei sein,
       // und dieselbe Person nie doppelt in überlappenden Zeitfenstern.
-      PATCH: nurSchicht(async (req) => {
+      PATCH: nurSchicht(async (req, ich) => {
         const b = await req.json().catch(() => ({}));
-        const mid = b?.mitarbeiter_id ?? null;
+        const mid = b?.employee_id ?? null;
         if (mid !== null) {
           const m = await mitarbeiterMitCaps(mid);
           if (!m) return Response.json({ fehler: "Mitarbeiter unbekannt" }, { status: 400 });
-          const slot = await eins<{ datum: string; rolle: string; von: string; bis: string; mitarbeiter_id: string | null }>(
-            "SELECT datum, rolle, von, bis, mitarbeiter_id FROM schichten WHERE id = ?", req.params.id,
-          );
+          const slot = await SHIFTS.get(req.params.id);
           if (!slot) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-          if (slot.mitarbeiter_id) {
+          if (slot.employee_id) {
             return Response.json(
               { fehler: "Dieser Platz ist schon besetzt – erst die Zuweisung lösen." },
               { status: 409 },
             );
           }
-          if (!rollePasst(m, slot.rolle)) {
+          if (!rollePasst(m, slot.role)) {
             return Response.json(
-              { fehler: `${m.name} (${m.role}) passt nicht auf eine ${slot.rolle}-Schicht.` },
+              { fehler: `${m.name} (${m.role}) passt nicht auf eine ${slot.role}-Schicht.` },
               { status: 409 },
             );
           }
           // Zeitliche Doppelbelegung derselben Person am selben Tag verhindern.
           const spanne = (von: string, bis: string) => {
-            const s = lokalTs(slot.datum, von);
-            let e = lokalTs(slot.datum, bis);
+            const s = lokalTs(slot.date, von);
+            let e = lokalTs(slot.date, bis);
             if (e <= s) e += 86400000; // über Mitternacht
             return [s, e] as const;
           };
-          const [zs, ze] = spanne(slot.von, slot.bis);
-          const andere = await alle<{ rolle: string; von: string; bis: string }>(
-            "SELECT rolle, von, bis FROM schichten WHERE mitarbeiter_id = ? AND datum = ? AND id != ?",
-            mid, slot.datum, req.params.id,
+          const [zs, ze] = spanne(slot.start, slot.end);
+          const andere = await alle<{ role: string; start: string; end: string }>(
+            'SELECT role, start, "end" FROM shifts WHERE employee_id = ? AND date = ? AND id != ?',
+            mid, slot.date, req.params.id,
           );
           for (const a of andere) {
-            const [as, ae] = spanne(a.von, a.bis);
+            const [as, ae] = spanne(a.start, a.end);
             if (as < ze && zs < ae) {
               return Response.json(
-                { fehler: `${m.name} ist an dem Tag schon von ${a.von}–${a.bis} (${a.rolle}) eingeplant.` },
+                { fehler: `${m.name} ist an dem Tag schon von ${a.start}–${a.end} (${a.role}) eingeplant.` },
                 { status: 409 },
               );
             }
           }
         }
-        const r = await lauf("UPDATE schichten SET mitarbeiter_id = ? WHERE id = ?", mid, req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        return Response.json({ id: req.params.id, mitarbeiter_id: mid });
+        const r = await SHIFTS.patch(req.params.id, { employee_id: mid }, ich.id);
+        if (!r) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return Response.json({ id: req.params.id, employee_id: mid });
       }),
-      PUT: nurSchicht(async (req) => {
+      PUT: nurSchicht(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = schichtFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        if (!(await rolleImKatalog(daten.rolle))) {
+        if (!(await rolleImKatalog(daten.role))) {
           return Response.json({ fehler: "Unbekannte Rolle – bitte aus dem Katalog wählen." }, { status: 400 });
         }
-        const r = await lauf(
-          "UPDATE schichten SET datum = ?, rolle = ?, von = ?, bis = ?, notiz = ? WHERE id = ?",
-          daten.datum, daten.rolle, daten.von, daten.bis, daten.notiz, req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        return Response.json({ id: req.params.id, ...daten });
+        try {
+          const r = await SHIFTS.patch(req.params.id, daten, ich.id);
+          if (!r) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+          return Response.json(r);
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
-      DELETE: nurSchicht(async (req) => {
-        const r = await lauf("DELETE FROM schichten WHERE id = ?", req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+      DELETE: nurSchicht(async (req, ich) => {
+        if (!(await SHIFTS.remove(req.params.id, ich.id))) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
       }),
     },
@@ -783,36 +782,32 @@ const routen = {
     // ---- Feier-Anfragen ----
     "/api/anfragen": {
       GET: nurReserv(async () =>
-        Response.json(await alle("SELECT * FROM anfragen ORDER BY erstellt DESC LIMIT 200")),
+        Response.json(await alle("SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 200")),
       ),
       POST: async (req) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültige Anfrage" }, { status: 400 });
         const name = text(b.name, 120);
         const email = text(b.email, 160);
-        const notiz = text(b.notiz, 2000);
-        if (!name || !email || !notiz) {
+        const note = text(b.note, 2000);
+        if (!name || !email || !note) {
           return Response.json({ fehler: "Bitte Name, E-Mail und eine kurze Beschreibung angeben." }, { status: 400 });
         }
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
           return Response.json({ fehler: "Bitte eine gültige E-Mail-Adresse angeben." }, { status: 400 });
         }
-        const personen = Number(b.personen);
-        const zeile = {
-          id: randomUUID(), name, email,
-          telefon: text(b.telefon, 40) || null,
-          anlass: text(b.anlass, 80) || null,
-          datum: res.istDatum(b.datum) ? b.datum : null,
-          personen: Number.isInteger(personen) && personen > 0 ? personen : null,
-          notiz, erstellt: Date.now(),
-        };
-        await lauf(
-          `INSERT INTO anfragen (id, name, email, telefon, anlass, datum, personen, notiz, status, erstellt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'neu', ?)`,
-          zeile.id, zeile.name, zeile.email, zeile.telefon, zeile.anlass,
-          zeile.datum, zeile.personen, zeile.notiz, zeile.erstellt,
-        );
-        return Response.json({ ok: true, id: zeile.id }, { status: 201 });
+        const guests = Number(b.guests);
+        try {
+          const zeile = await INQUIRIES.create({
+            name, email,
+            phone: text(b.phone, 40) || null,
+            occasion: text(b.occasion, 80) || null,
+            date: res.istDatum(b.date) ? b.date : null,
+            guests: Number.isInteger(guests) && guests > 0 ? guests : null,
+            note, status: "neu", created_at: Date.now(),
+          }, "guest");
+          return Response.json({ ok: true, id: zeile.id }, { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       },
     },
 
@@ -927,30 +922,30 @@ const routen = {
         const to = Number(q.get("to") ?? Date.now() + 1);
         return Response.json(await sitzungenFuer(req.params.mitarbeiterId, from, to));
       }),
-      POST: nurZeitenAdmin(async (req) => {
+      POST: nurZeitenAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const start = Number(b?.start), end = Number(b?.end);
         if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
           return Response.json({ fehler: "Start muss vor dem Ende liegen." }, { status: 400 });
         }
-        return Response.json(await sitzungAnlegen(req.params.mitarbeiterId, start, end), { status: 201 });
+        return Response.json(await sitzungAnlegen(req.params.mitarbeiterId, start, end, ich.id), { status: 201 });
       }),
-      PUT: nurZeitenAdmin(async (req) => {
+      PUT: nurZeitenAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const start = Number(b?.start);
         const end = b?.end == null ? null : Number(b.end);
         if (!b?.inId || !Number.isFinite(start) || (end != null && end <= start)) {
           return Response.json({ fehler: "Ungültige Zeiten." }, { status: 400 });
         }
-        if (!(await sitzungAendern(req.params.mitarbeiterId, { inId: b.inId, outId: b.outId ?? null, start, end }))) {
+        if (!(await sitzungAendern(req.params.mitarbeiterId, { inId: b.inId, outId: b.outId ?? null, start, end }, ich.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
         return Response.json({ ok: true });
       }),
-      DELETE: nurZeitenAdmin(async (req) => {
+      DELETE: nurZeitenAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         if (!b?.inId) return Response.json({ fehler: "inId fehlt" }, { status: 400 });
-        if (!(await sitzungLoeschen(req.params.mitarbeiterId, b.inId, b.outId ?? null))) {
+        if (!(await sitzungLoeschen(req.params.mitarbeiterId, b.inId, b.outId ?? null, ich.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
         return new Response(null, { status: 204 });
@@ -988,10 +983,7 @@ const routen = {
           }
         }
 
-        await lauf(
-          "INSERT INTO events (id, mitarbeiter_id, type, ts) VALUES (?, ?, ?, ?)",
-          randomUUID(), emp.id, type, ts,
-        );
+        await eventAnlegen(emp.id, type, ts);
         return Response.json({ name: emp.name, type, ts });
       }),
     },
@@ -1014,10 +1006,7 @@ const routen = {
         if (ende > Date.now()) {
           return Response.json({ fehler: "Das Ende kann nicht in der Zukunft liegen." }, { status: 400 });
         }
-        await lauf(
-          "INSERT INTO events (id, mitarbeiter_id, type, ts) VALUES (?, ?, 'out', ?)",
-          randomUUID(), ich.id, ende,
-        );
+        await eventAnlegen(ich.id, "out", ende);
         return Response.json({ ok: true, ende });
       }),
     },
@@ -1049,7 +1038,7 @@ const routen = {
       const rows = await Promise.all(
         (await listAll()).map(async (m) => {
           const evs = await alle<Ev>(
-            "SELECT type, ts FROM events WHERE mitarbeiter_id = ? ORDER BY ts ASC", m.id,
+            "SELECT type, ts FROM time_events WHERE employee_id = ? ORDER BY ts ASC", m.id,
           );
           const clipped = clip(sessionsFor(evs), from, to, now);
           return {
@@ -1066,109 +1055,85 @@ const routen = {
 
     // ---- Website-Karte: pflegen nur Admin (die Website liest direkt aus der DB) ----
     "/api/karte": nurKarteAdmin(async () => {
-      const gruppen = await alle("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
-      const positionen = await alle("SELECT * FROM karte_positionen ORDER BY sortierung, name");
-      return Response.json({ kapitel: KAPITEL_META, gruppen, positionen });
+      const groups = await alle("SELECT * FROM menu_groups ORDER BY sort_order, title");
+      const items = await alle("SELECT * FROM menu_items ORDER BY sort_order, name");
+      return Response.json({ kapitel: KAPITEL_META, groups, items });
     }),
 
     "/api/karte/gruppen": {
-      POST: nurKarteAdmin(async (req) => {
+      POST: nurKarteAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = karteGruppeFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const max = await eins<{ m: number | null }>("SELECT MAX(sortierung) AS m FROM karte_gruppen");
-        const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
-        await lauf(
-          "INSERT INTO karte_gruppen (id, kapitel, titel, spalten, fussnote, sortierung) VALUES (?, ?, ?, ?, ?, ?)",
-          zeile.id, zeile.kapitel, zeile.titel, zeile.spalten, zeile.fussnote, zeile.sortierung,
-        );
-        karteInvalidieren();
-        return Response.json(zeile, { status: 201 });
+        const max = await eins<{ m: number | null }>("SELECT MAX(sort_order) AS m FROM menu_groups");
+        try {
+          return Response.json(await GROUPS.create({ ...daten, sort_order: Number(max?.m ?? 0) + 1 }, ich.id), { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
     },
     "/api/karte/gruppen/:id": {
-      PUT: nurKarteAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = karteGruppeFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const r = await lauf(
-          "UPDATE karte_gruppen SET kapitel = ?, titel = ?, spalten = ?, fussnote = ? WHERE id = ?",
-          daten.kapitel, daten.titel, daten.spalten, daten.fussnote, req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        karteInvalidieren();
-        return Response.json({ id: req.params.id, ...daten });
+        try {
+          const r = await GROUPS.patch(req.params.id, daten, ich.id);
+          if (!r) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+          return Response.json(r);
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
-      DELETE: nurKarteAdmin(async (req) => {
-        const r = await lauf("DELETE FROM karte_gruppen WHERE id = ?", req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        karteInvalidieren();
+      DELETE: nurKarteAdmin(async (req, ich) => {
+        if (!(await GROUPS.remove(req.params.id, ich.id))) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
       }),
     },
 
     "/api/karte/positionen": {
-      POST: nurKarteAdmin(async (req) => {
+      POST: nurKarteAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = await kartePositionFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
         const max = await eins<{ m: number | null }>(
-          "SELECT MAX(sortierung) AS m FROM karte_positionen WHERE gruppe_id = ?", daten.gruppe_id,
+          "SELECT MAX(sort_order) AS m FROM menu_items WHERE group_id = ?", daten.group_id,
         );
-        const zeile = { id: randomUUID(), ...daten, sortierung: Number(max?.m ?? 0) + 1 };
-        await lauf(
-          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          zeile.id, zeile.gruppe_id, zeile.name, zeile.text, zeile.option, zeile.tags,
-          zeile.stern, zeile.preise, zeile.sortierung, zeile.aktiv,
-        );
-        karteInvalidieren();
-        return Response.json(zeile, { status: 201 });
+        try {
+          return Response.json(await ITEMS.create({ ...daten, sort_order: Number(max?.m ?? 0) + 1 }, ich.id), { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
     },
     "/api/karte/positionen/:id": {
-      PUT: nurKarteAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const daten = await kartePositionFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
-        const r = await lauf(
-          "UPDATE karte_positionen SET gruppe_id = ?, name = ?, text = ?, option = ?, tags = ?, stern = ?, preise = ?, aktiv = ? WHERE id = ?",
-          daten.gruppe_id, daten.name, daten.text, daten.option, daten.tags,
-          daten.stern, daten.preise, daten.aktiv, req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        karteInvalidieren();
-        return Response.json({ id: req.params.id, ...daten });
+        try {
+          const r = await ITEMS.patch(req.params.id, daten, ich.id);
+          if (!r) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+          return Response.json(r);
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
-      DELETE: nurKarteAdmin(async (req) => {
-        const r = await lauf("DELETE FROM karte_positionen WHERE id = ?", req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        karteInvalidieren();
+      DELETE: nurKarteAdmin(async (req, ich) => {
+        if (!(await ITEMS.remove(req.params.id, ich.id))) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
       }),
     },
 
     // Reihenfolge der Positionen (innerhalb einer Gruppe) bzw. der Gruppen per Drag & Drop.
     "/api/karte/positionen-reihenfolge": {
-      PUT: nurKarteAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
-        for (let i = 0; i < ids.length; i++) {
-          await lauf("UPDATE karte_positionen SET sortierung = ? WHERE id = ?", i + 1, ids[i]);
-        }
-        karteInvalidieren();
+        for (let i = 0; i < ids.length; i++) await ITEMS.patch(ids[i], { sort_order: i + 1 }, ich.id);
         return Response.json({ ok: true });
       }),
     },
     "/api/karte/gruppen-reihenfolge": {
-      PUT: nurKarteAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
-        for (let i = 0; i < ids.length; i++) {
-          await lauf("UPDATE karte_gruppen SET sortierung = ? WHERE id = ?", i + 1, ids[i]);
-        }
-        karteInvalidieren();
+        for (let i = 0; i < ids.length; i++) await GROUPS.patch(ids[i], { sort_order: i + 1 }, ich.id);
         return Response.json({ ok: true });
       }),
     },
@@ -1315,83 +1280,77 @@ const routen = {
     // ---- Abendführung: Ablauf-Checklisten ----
     "/api/ablauf": nurTeam(async (req) => {
       const q = new URL(req.url).searchParams;
-      const prozess = q.get("prozess");
-      const datum = q.get("datum") ?? res.alsDatum(new Date());
-      if (!ablauf.istProzess(prozess)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
-      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
-      return Response.json(await ablauf.tag(prozess, datum));
+      const process = q.get("process");
+      const date = q.get("date") ?? res.alsDatum(new Date());
+      if (!ablauf.istProzess(process)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
+      if (!res.istDatum(date)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await ablauf.tag(process, date));
     }),
     "/api/ablauf/status": nurTeam(async (req) => {
-      const datum = new URL(req.url).searchParams.get("datum") ?? res.alsDatum(new Date());
-      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
-      return Response.json(await ablauf.status(datum));
+      const date = new URL(req.url).searchParams.get("date") ?? res.alsDatum(new Date());
+      if (!res.istDatum(date)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await ablauf.status(date));
     }),
     "/api/ablauf/erledigt": {
       POST: nurTeam(async (req, ich) => {
         const b = await req.json().catch(() => null);
-        const aufgabeId = text(b?.aufgabe_id, 40);
-        const datum = text(b?.datum, 10) || res.alsDatum(new Date());
-        if (!aufgabeId || !res.istDatum(datum)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
-        await ablauf.erledigtSetzen(aufgabeId, datum, ich.id);
+        const taskId = text(b?.task_id, 40);
+        const date = text(b?.date, 10) || res.alsDatum(new Date());
+        if (!taskId || !res.istDatum(date)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
+        try { await ablauf.erledigtSetzen(taskId, date, ich.id); }
+        catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
         return Response.json({ ok: true });
       }),
-      DELETE: nurTeam(async (req) => {
+      DELETE: nurTeam(async (req, ich) => {
         const b = await req.json().catch(() => null);
-        const aufgabeId = text(b?.aufgabe_id, 40);
-        const datum = text(b?.datum, 10) || res.alsDatum(new Date());
-        if (!aufgabeId || !res.istDatum(datum)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
-        await ablauf.erledigtLoeschen(aufgabeId, datum);
+        const taskId = text(b?.task_id, 40);
+        const date = text(b?.date, 10) || res.alsDatum(new Date());
+        if (!taskId || !res.istDatum(date)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
+        await ablauf.erledigtLoeschen(taskId, date, ich.id);
         return Response.json({ ok: true });
       }),
     },
     // Katalog pflegen (Admin)
     "/api/ablauf/aufgaben": {
-      POST: nurAblaeufe(async (req) => {
+      POST: nurAblaeufe(async (req, ich) => {
         const b = await req.json().catch(() => null);
-        const prozess = b?.prozess;
-        const titel = text(b?.titel, 200);
-        if (!ablauf.istProzess(prozess)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
-        if (!titel) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
-        const zeile = {
-          id: randomUUID(), prozess, gruppe: text(b?.gruppe, 60) || null,
-          titel, info: text(b?.info, 1000) || null,
-          sortierung: await ablauf.naechsteSortierung(prozess), aktiv: 1,
-        };
-        await lauf(
-          "INSERT INTO ablauf_aufgaben (id, prozess, gruppe, titel, info, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, 1)",
-          zeile.id, zeile.prozess, zeile.gruppe, zeile.titel, zeile.info, zeile.sortierung,
-        );
-        return Response.json(zeile, { status: 201 });
+        const process = b?.process;
+        const title = text(b?.title, 200);
+        if (!ablauf.istProzess(process)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
+        if (!title) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
+        try {
+          const zeile = await ablauf.TASKS.create({
+            process, group: text(b?.group, 60) || null, title, info: text(b?.info, 1000) || null,
+            sort_order: await ablauf.naechsteSortierung(process), active: 1,
+          }, ich.id);
+          return Response.json(zeile, { status: 201 });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
     },
     // Reihenfolge innerhalb eines Prozesses: Array von Aufgaben-IDs = neue Sortierung.
     "/api/ablauf/aufgaben-reihenfolge": {
-      PUT: nurAblaeufe(async (req) => {
+      PUT: nurAblaeufe(async (req, ich) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
-        for (let i = 0; i < ids.length; i++) {
-          await lauf("UPDATE ablauf_aufgaben SET sortierung = ? WHERE id = ?", i, ids[i]);
-        }
+        for (let i = 0; i < ids.length; i++) await ablauf.TASKS.patch(ids[i], { sort_order: i }, ich.id);
         return Response.json({ ok: true });
       }),
     },
     "/api/ablauf/aufgaben/:id": {
-      PUT: nurAblaeufe(async (req) => {
+      PUT: nurAblaeufe(async (req, ich) => {
         const b = await req.json().catch(() => null);
-        const titel = text(b?.titel, 200);
-        if (!titel) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
-        const aktiv = b?.aktiv === 0 || b?.aktiv === false ? 0 : 1;
-        const r = await lauf(
-          "UPDATE ablauf_aufgaben SET gruppe = ?, titel = ?, info = ?, aktiv = ? WHERE id = ?",
-          text(b?.gruppe, 60) || null, titel, text(b?.info, 1000) || null, aktiv, req.params.id,
-        );
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
-        return Response.json({ ok: true });
+        const title = text(b?.title, 200);
+        if (!title) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
+        const active = b?.active === 0 || b?.active === false ? 0 : 1;
+        try {
+          const r = await ablauf.TASKS.patch(req.params.id, { group: text(b?.group, 60) || null, title, info: text(b?.info, 1000) || null, active }, ich.id);
+          if (!r) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+          return Response.json({ ok: true });
+        } catch (e) { return datenFehler(e) ?? Response.json({ fehler: "Speichern fehlgeschlagen" }, { status: 500 }); }
       }),
-      DELETE: nurAblaeufe(async (req) => {
-        const r = await lauf("DELETE FROM ablauf_aufgaben WHERE id = ?", req.params.id);
-        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+      DELETE: nurAblaeufe(async (req, ich) => {
+        if (!(await ablauf.TASKS.remove(req.params.id, ich.id))) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
       }),
     },
@@ -1473,13 +1432,14 @@ const routen = {
         if (res.changes === 0) return Response.json({ error: "nicht gefunden" }, { status: 404 });
         return Response.json({ id, name, vorname: vn, nachname: nn || null, role: role.trim(), ma_code: code, personalnr: pnr, soll_std: soll });
       }),
-      DELETE: nurTeamAdmin(async (req) => {
+      DELETE: nurTeamAdmin(async (req, ich) => {
         const id = req.params.id;
         if (!(await eins("SELECT 1 AS x FROM mitarbeiter WHERE id = ?", id))) return Response.json({ error: "nicht gefunden" }, { status: 404 });
         // Fachdaten hängen im Dokumentenspeicher ohne Fremdschlüssel – Kaskaden hier nachziehen.
-        await lauf("DELETE FROM events WHERE mitarbeiter_id = ?", id);
-        await lauf("UPDATE schichten SET mitarbeiter_id = NULL WHERE mitarbeiter_id = ?", id);
-        await lauf("UPDATE ablauf_erledigt SET von = NULL WHERE von = ?", id);
+        await dok.alsWer(ich.id);
+        await lauf("DELETE FROM dokumente WHERE schema_id = 'time_events' AND data->>'employee_id' = ?", id);
+        await lauf("UPDATE dokumente SET data = data || '{\"employee_id\": null}'::jsonb WHERE schema_id = 'shifts' AND data->>'employee_id' = ?", id);
+        await lauf("UPDATE dokumente SET data = data || '{\"employee_id\": null}'::jsonb WHERE schema_id = 'routine_done' AND data->>'employee_id' = ?", id);
         await lauf("DELETE FROM mitarbeiter WHERE id = ?", id);
         return new Response(null, { status: 204 });
       }),
@@ -1488,9 +1448,10 @@ const routen = {
     // ---- Generischer Dokumentenspeicher: Schemata (JSON Schema) + validiertes CRUD – SSOT für Fachdaten ----
     "/api/daten/schemas": {
       GET: nurTeam(async (_req, ich) => Response.json((await dok.schemata()).filter((s) => dok.darf(ich, s, "lesen")))),
-      POST: nurDatenAdmin(async (req) => {
+      POST: nurDatenAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültiges JSON" }, { status: 400 });
+        await dok.alsWer(ich.id);
         const r = await dok.schemaAnlegen(b);
         return r.ok ? Response.json(r.schema, { status: 201 }) : Response.json({ fehler: r.fehler }, { status: 400 });
       }),
@@ -1501,15 +1462,42 @@ const routen = {
         if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json(s);
       }),
-      PUT: nurDatenAdmin(async (req) => {
+      PUT: nurDatenAdmin(async (req, ich) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültiges JSON" }, { status: 400 });
+        await dok.alsWer(ich.id);
         const r = await dok.schemaAendern(req.params.id, b);
         return r.ok ? Response.json(r.schema) : Response.json({ fehler: r.fehler }, { status: r.fehler === "nicht gefunden" ? 404 : 400 });
       }),
-      DELETE: nurDatenAdmin(async (req) =>
-        (await dok.schemaLoeschen(req.params.id)) ? new Response(null, { status: 204 })
-          : Response.json({ fehler: "System-Schema oder nicht gefunden" }, { status: 400 })),
+      DELETE: nurDatenAdmin(async (req, ich) => {
+        await dok.alsWer(ich.id);
+        return (await dok.schemaLoeschen(req.params.id)) ? new Response(null, { status: 204 })
+          : Response.json({ fehler: "System-Schema oder nicht gefunden" }, { status: 400 });
+      }),
+    },
+    // ---- Historie: jede Aenderung an Schemata und Dokumenten, mit Wiederherstellung ----
+    "/api/daten/verlauf": {
+      GET: nurDatenAdmin(async (req) => {
+        const q = new URL(req.url).searchParams;
+        return Response.json(await dok.verlauf({ schema: q.get("schema") ?? undefined, dokument: q.get("dokument") ?? undefined }, Number(q.get("limit") ?? 200), Number(q.get("offset") ?? 0)));
+      }),
+    },
+    "/api/daten/verlauf/:seq/wiederherstellen": {
+      POST: nurDatenAdmin(async (req, ich) => {
+        await dok.alsWer(ich.id);
+        const r = await dok.wiederherstellen(Number(req.params.seq));
+        return r.ok ? Response.json({ ok: true, dokument: r.dokument }) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
+      }),
+    },
+    "/api/daten/schema-verlauf": {
+      GET: nurDatenAdmin(async (req) => Response.json(await dok.schemaVerlauf(new URL(req.url).searchParams.get("schema") ?? undefined))),
+    },
+    "/api/daten/schema-verlauf/:seq/wiederherstellen": {
+      POST: nurDatenAdmin(async (req, ich) => {
+        await dok.alsWer(ich.id);
+        const r = await dok.schemaWiederherstellen(Number(req.params.seq));
+        return r.ok ? Response.json({ ok: true, schema: r.schema }) : Response.json({ fehler: r.fehler }, { status: 400 });
+      }),
     },
     "/api/daten/:schema": {
       GET: nurTeam(async (req, ich) => {
@@ -1525,6 +1513,7 @@ const routen = {
         if (!s || !dok.darf(ich, s, "lesen")) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         if (!dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: 403 });
         const b = await req.json().catch(() => null);
+        await dok.alsWer(ich.id);
         const r = await dok.anlegen(s, b, typeof b?.id === "string" ? b.id : undefined);
         return r.ok ? Response.json(r.dokument, { status: 201 }) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
       }),
@@ -1547,6 +1536,7 @@ const routen = {
       PUT: nurTeam(async (req, ich) => {
         const s = await dok.schema(req.params.schema);
         if (!s || !dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: s ? 403 : 404 });
+        await dok.alsWer(ich.id);
         const r = await dok.ersetzen(s, req.params.id, await req.json().catch(() => null));
         if (r === null) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return r.ok ? Response.json(r.dokument) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
@@ -1554,6 +1544,7 @@ const routen = {
       PATCH: nurTeam(async (req, ich) => {
         const s = await dok.schema(req.params.schema);
         if (!s || !dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: s ? 403 : 404 });
+        await dok.alsWer(ich.id);
         const r = await dok.aendern(s, req.params.id, await req.json().catch(() => null));
         if (r === null) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return r.ok ? Response.json(r.dokument) : Response.json({ fehler: r.fehler }, { status: r.konflikt ? 409 : 400 });
@@ -1561,6 +1552,7 @@ const routen = {
       DELETE: nurTeam(async (req, ich) => {
         const s = await dok.schema(req.params.schema);
         if (!s || !dok.darf(ich, s, "schreiben")) return Response.json({ fehler: "Keine Schreibrechte" }, { status: s ? 403 : 404 });
+        await dok.alsWer(ich.id);
         return (await dok.loeschen(s, req.params.id)) ? new Response(null, { status: 204 }) : Response.json({ fehler: "nicht gefunden" }, { status: 404 });
       }),
     },
