@@ -44,7 +44,7 @@ jobs:
             sleep 1
           done
           echo; cat server.log
-          grep -q "Migration angewendet: 029" server.log
+          grep -q "Migration angewendet: 003-chat-und-skills" server.log && grep -q "Speisekarte importiert" server.log
       - name: Rauchtest der öffentlichen Endpunkte
         run: |
           set -e

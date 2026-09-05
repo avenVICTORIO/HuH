@@ -12,7 +12,7 @@ docker compose up -d --build
 open http://localhost:3000
 ```
 
-- Migrationen und Seeds laufen beim Start der App automatisch gegen Postgres.
+- Migrationen (drei Kern-Migrationen in `migrationen.ts`: Konten & Rechte, Dokumentenspeicher mit Historie, Chat & Skills) und Seeds (`seeds.ts`: Rollen, Inhaber-Konto, Schicht-Vorlage, Speisekarte, Abläufe) laufen beim Start der App automatisch.
 - Daten liegen im Volume `pgdata` (`docker compose down -v` löscht sie).
 - Logs: `docker compose logs -f app`
 
