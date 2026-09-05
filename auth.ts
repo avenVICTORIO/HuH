@@ -47,6 +47,44 @@ export const sessionCookie = (token: string) =>
 
 export const logoutCookie = () => `${COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`;
 
+/**
+ * Fähigkeiten-Katalog: Rollen bündeln diese Capabilities (CSV in rollen.capabilities,
+ * '*' = alles). Basis-Funktionen – eigene Zeiten, Meine Schichten, Stempeln,
+ * Abläufe erledigen – hat jede angemeldete Person implizit.
+ */
+export const CAPABILITIES: Record<string, string> = {
+  reservierungen: "Reservierungen verwalten",
+  inventur: "Inventur zählen",
+  "inventur.admin": "Inventur-Artikel & Soll pflegen",
+  rezepte: "Rezepte ansehen & Verkäufe buchen",
+  "rezepte.admin": "Rezepte & Gerichte pflegen",
+  "karte.admin": "Website-Karte pflegen",
+  schichtplan: "Schichtplan & Vorlage verwalten",
+  "zeiten.admin": "Zeiten aller korrigieren",
+  auswertung: "Auswertung & Live-Ansicht",
+  "ablaeufe.admin": "Abläufe-Katalog pflegen",
+  "team.admin": "Team, Rollen & Einladungen verwalten",
+};
+
+export const hatCap = (m: Mitarbeiter | null, cap: string): boolean =>
+  !!m?.caps && (m.caps.includes("*") || m.caps.includes(cap));
+
+/** Mitarbeiter inkl. aufgelöster Capabilities seiner Rolle laden. */
+export async function mitarbeiterMitCaps(id: string): Promise<Mitarbeiter | null> {
+  const m = await eins<Mitarbeiter & { capabilities: string | null }>(
+    `SELECT m.id, m.name, m.vorname, m.nachname, m.role, m.admin,
+            m.ma_code, m.personalnr, m.soll_std, r.capabilities
+       FROM mitarbeiter m LEFT JOIN rollen r ON r.name = m.role
+      WHERE m.id = ?`, id,
+  );
+  if (!m) return null;
+  const caps = (m.capabilities ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+  // Altbestand: Inhaber-Flag zählt weiter als Vollzugriff.
+  if (m.admin && !caps.includes("*")) caps.push("*");
+  const { capabilities: _weg, ...rest } = m;
+  return { ...rest, caps };
+}
+
 /** Wer steckt hinter dieser Anfrage? null = nicht (mehr) angemeldet. */
 export async function wer(req: Request): Promise<Mitarbeiter | null> {
   const cookies = req.headers.get("cookie") ?? "";
@@ -54,9 +92,7 @@ export async function wer(req: Request): Promise<Mitarbeiter | null> {
   if (!m) return null;
   const id = tokenPruefen(m[1]);
   if (!id) return null;
-  return eins<Mitarbeiter>(
-    "SELECT id, name, role, pin, admin, ma_code, personalnr, soll_std FROM mitarbeiter WHERE id = ?", id,
-  );
+  return mitarbeiterMitCaps(id);
 }
 
 type Handler = (
@@ -71,13 +107,16 @@ export const nurTeam = (h: Handler) => async (req: Request & { params: Record<st
   return h(req, ich);
 };
 
-/** Route-Wächter: nur Admin (Inhaber). */
-export const nurAdmin = (h: Handler) => async (req: Request & { params: Record<string, string> }) => {
-  const ich = await wer(req);
-  if (!ich) return Response.json({ fehler: "Bitte anmelden" }, { status: 401 });
-  if (!ich.admin) return Response.json({ fehler: "Nur für Admins" }, { status: 403 });
-  return h(req, ich);
-};
+/** Route-Wächter: nur mit dieser Fähigkeit (Rollen-Bundle). */
+export const mitCap = (cap: keyof typeof CAPABILITIES) => (h: Handler) =>
+  async (req: Request & { params: Record<string, string> }) => {
+    const ich = await wer(req);
+    if (!ich) return Response.json({ fehler: "Bitte anmelden" }, { status: 401 });
+    if (!hatCap(ich, cap)) {
+      return Response.json({ fehler: `Dafür fehlt dir die Berechtigung „${CAPABILITIES[cap]}“.` }, { status: 403 });
+    }
+    return h(req, ich);
+  };
 
 // ------------------------------------------------------ Zeiten-Sitzungen (CRUD)
 

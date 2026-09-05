@@ -8,10 +8,13 @@ import { randomUUID } from "node:crypto";
 export type Mitarbeiter = {
   id: string;
   name: string;
+  vorname: string;
+  nachname: string | null;
   role: string;
-  pin: string;
-  /** 1 = Admin (sieht Team, alle Zeiten); 0 = Mitarbeiter (nur eigene Zeiten + Reservierungen). */
+  /** Altlast (wird von den Capabilities abgelöst); 1 = Inhaber-Konto. */
   admin: number;
+  /** Fähigkeiten aus der Rolle (CSV aufgelöst); '*' = alles. Wird von wer()/Login befüllt. */
+  caps?: string[];
   /** Personalstammblatt: MA-Code (z. B. "MA022"); null = kein Lohn/nicht gelistet. */
   ma_code: string | null;
   /** Gastromatic-Mitarbeiter-Nr. (z. B. "250022"); null = nicht vergeben. */
@@ -342,6 +345,55 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       );
     `,
   },
+  {
+    // Account-Reset: PIN-Logik komplett raus, Login läuft über Passkeys (WebAuthn).
+    // Mitarbeiter bekommen Vor- und Nachname; bestehende Namen werden gesplittet.
+    id: "014-passkeys",
+    sql: /* sql */ `
+      ALTER TABLE mitarbeiter ADD COLUMN vorname  TEXT;
+      ALTER TABLE mitarbeiter ADD COLUMN nachname TEXT;
+      UPDATE mitarbeiter SET
+        vorname  = COALESCE(NULLIF(split_part(name, ' ', 1), ''), name),
+        nachname = NULLIF(btrim(substr(name, length(split_part(name, ' ', 1)) + 2)), '');
+      ALTER TABLE mitarbeiter DROP COLUMN pin;
+
+      CREATE TABLE passkeys (
+        id             TEXT PRIMARY KEY,  -- Credential-ID (base64url)
+        mitarbeiter_id TEXT NOT NULL REFERENCES mitarbeiter(id) ON DELETE CASCADE,
+        public_key     TEXT NOT NULL,     -- COSE-Public-Key, base64url
+        counter        DOUBLE PRECISION NOT NULL DEFAULT 0,
+        transports     TEXT,
+        erstellt       DOUBLE PRECISION NOT NULL
+      );
+      CREATE INDEX ix_passkeys_ma ON passkeys(mitarbeiter_id);
+    `,
+  },
+  {
+    // Registrierung ist invite-only: Der allererste Passkey im Haus wird Admin,
+    // alle weiteren Konten entstehen über einen vom Admin erstellten Einladungslink.
+    id: "015-einladungen",
+    sql: /* sql */ `
+      CREATE TABLE einladungen (
+        code           TEXT PRIMARY KEY,
+        mitarbeiter_id TEXT NOT NULL REFERENCES mitarbeiter(id) ON DELETE CASCADE,
+        erstellt       DOUBLE PRECISION NOT NULL,
+        gueltig_bis    DOUBLE PRECISION NOT NULL,
+        benutzt        DOUBLE PRECISION
+      );
+      CREATE INDEX ix_einladungen_ma ON einladungen(mitarbeiter_id);
+    `,
+  },
+  {
+    // Zugriff wird capabilities-basiert: Rollen sind Bündel von Fähigkeiten
+    // (CSV; '*' = alles). Der Katalog der Fähigkeiten lebt in auth.ts.
+    id: "016-capabilities",
+    sql: /* sql */ `
+      ALTER TABLE rollen ADD COLUMN capabilities TEXT NOT NULL DEFAULT '';
+      UPDATE rollen SET capabilities = '*' WHERE name = 'Inhaber';
+      UPDATE rollen SET capabilities = 'reservierungen,inventur,rezepte'
+        WHERE name <> 'Inhaber' AND capabilities = '';
+    `,
+  },
 ];
 
 async function migrieren() {
@@ -361,26 +413,14 @@ async function migrieren() {
 
 // --------------------------------------------------------------------- Seeds
 
-/** Erste freie 4-stellige PIN ab 1001. */
-export async function allocatePin(): Promise<string> {
-  const vergeben = new Set(
-    (await alle<{ pin: string }>("SELECT pin FROM mitarbeiter")).map((r) => r.pin),
-  );
-  for (let n = 1001; n <= 9998; n++) {
-    const p = String(n).padStart(4, "0");
-    if (!vergeben.has(p)) return p;
-  }
-  throw new Error("keine freie PIN mehr");
-}
-
 async function saeen() {
   const m = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM mitarbeiter");
   if (Number(m?.c ?? 0) === 0) {
     await lauf(
-      "INSERT INTO mitarbeiter (id, name, role, pin, admin) VALUES (?, ?, ?, ?, ?)",
-      randomUUID(), "Victorio", "Inhaber", "0009", 1,
+      "INSERT INTO mitarbeiter (id, name, vorname, nachname, role, admin) VALUES (?, ?, ?, ?, ?, ?)",
+      randomUUID(), "Victorio", "Victorio", null, "Inhaber", 1,
     );
-    console.log("🌱 Team befüllt: Victorio (PIN 0009, Admin)");
+    console.log("🌱 Team befüllt: Victorio (Inhaber/Admin) – Passkey beim ersten Login anlegen");
   }
 
   // Inventur-Beispieldaten: bei (fast) leerer Tabelle einmalig auffüllen.

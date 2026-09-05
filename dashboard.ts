@@ -258,6 +258,13 @@ ${baseCss}
 
   /* ---- Rollen-Katalog ---- */
   .rollen-chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
+  .rolle-karte{margin-bottom:12px;}
+  .cap-toggle{width:auto; padding:7px 12px; font-size:11.5px; letter-spacing:.02em;}
+  .cap-toggle[data-capkey="*"][aria-pressed="true"]{background:var(--amber); border-color:var(--amber);}
+  .tag.out{background:#F6E3DC; color:var(--rot);}
+  .invite-zeile{flex-basis:100%; display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;}
+  .invite-zeile input{flex:1; min-width:240px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:12.5px; font-family:var(--sans); background:var(--creme); color:var(--wald);}
+  .invite-zeile small{color:var(--grey); font-size:11.5px;}
   .rollen-chips .r-chip{
     display:inline-flex; align-items:center; gap:8px; padding:8px 8px 8px 15px; border-radius:999px;
     background:var(--card); border:1px solid var(--line); font-size:13.5px; color:var(--ink);
@@ -324,11 +331,8 @@ ${baseCss}
   <div class="gate-box">
     <img src="/logo.png" alt="Hand aufs Herz">
     <h1>Arbeitsbereich</h1>
-    <p>Bitte mit deinem 4-stelligen Team-PIN anmelden.</p>
-    <form id="gateForm">
-      <input id="gatePin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" aria-label="PIN">
-      <button type="submit">Anmelden</button>
-    </form>
+    <p>Melde dich mit deinem Passkey an – Fingerabdruck, Gesicht oder Geräte-Code.</p>
+    <button type="button" id="gatePasskey" style="width:100%; padding:14px; border:none; border-radius:14px; background:var(--wald); color:var(--sand-hell); font-family:var(--sans); font-size:14px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; cursor:pointer;">Mit Passkey anmelden</button>
     <div class="gate-fehler" id="gateFehler"></div>
     <a href="/terminal">← Zum Terminal</a>
   </div>
@@ -440,21 +444,21 @@ ${baseCss}
   <!-- ===== VIEW 3: TEAM ===== -->
   <section class="view" id="v-team">
     <div class="sec-title">Team verwalten</div>
-    <p class="hint">Name, Rolle und 4-stelligen PIN vergeben – damit stempelt der Mitarbeiter am Terminal ein und aus. MA-Code, Personal-Nr. (Gastromatic) und Soll-Wochenstunden stammen aus dem Stammblatt und sind optional. <b>Soll leer = Abruf</b>; 6 h sind ein Modellwert aus dem Personalkostenmodell, kein vertragliches Soll.</p>
+    <p class="hint">Person anlegen, dann per <b>Einladungslink</b> einladen – am Terminal richtet sie ihren Passkey ein (Fingerabdruck, Gesicht oder Geräte-Code). Zugriff kommt aus der Rolle. MA-Code, Personal-Nr. (Gastromatic) und Soll-Wochenstunden sind optional; <b>Soll leer = Abruf</b>.</p>
     <div id="teamList"><div class="empty">lädt …</div></div>
     <div class="miniform">
-      <input class="nm" id="newName" placeholder="Name (z. B. Anna)" maxlength="24">
+      <input class="nm" id="newVorname" placeholder="Vorname" maxlength="60" autocomplete="off">
+      <input class="nm" id="newNachname" placeholder="Nachname" maxlength="60" autocomplete="off">
       <select class="rl" id="newRole" style="padding:11px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; background:var(--card); font-family:var(--sans);"></select>
-      <input class="pn" id="newPin" placeholder="PIN" inputmode="numeric" maxlength="4">
       <input class="code" id="newCode" placeholder="MA-Code" maxlength="10">
       <input class="pnr" id="newPnr" placeholder="Personal-Nr." maxlength="12" inputmode="numeric">
       <input class="soll" id="newSoll" placeholder="Soll h" inputmode="decimal" maxlength="5">
       <button id="btnAdd">+ Hinzufügen</button>
     </div>
 
-    <div class="sec-title" style="font-size:20px">Rollen</div>
-    <p class="hint">Der feste Rollen-Katalog für Mitarbeiter und Schichten. Löschen geht nur, wenn keine Person die Rolle mehr trägt.</p>
-    <div class="rollen-chips" id="rollenListe"></div>
+    <div class="sec-title" style="font-size:20px">Rollen &amp; Berechtigungen</div>
+    <p class="hint">Rollen sind Bündel von Fähigkeiten: Was eine Rolle darf, gilt für alle mit dieser Rolle. „Alles“ = Inhaber-Vollzugriff. Löschen geht nur, wenn keine Person die Rolle mehr trägt.</p>
+    <div id="rollenListe"></div>
     <div class="miniform">
       <input class="rl" id="rolleNeu" placeholder="Neue Rolle (z. B. Spüler)" maxlength="40">
       <button id="btnRolleNeu">+ Anlegen</button>
@@ -638,6 +642,7 @@ setInterval(()=>{ const d=new Date(); $("clock").textContent=p2(d.getHours())+":
 
 /* ===== Anmeldung & Rollen ===== */
 let ME=null;
+const cap=(c)=>!!(ME&&ME.caps&&(ME.caps.includes("*")||ME.caps.includes(c))); // Fähigkeit der eigenen Rolle
 let activeView=null;
 
 function schubladeZu(){
@@ -674,13 +679,16 @@ function aktiviere(v){
 }
 document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>aktiviere(t.dataset.v)));
 
-const erlaubteTabs=()=> ME.admin
-  ? ["heute","reservierungen","schichtplan","meine-zeiten","inventur","rezepte","karte","auswertung","ablaeufe","team"]
-  : ["meine-schichten","meine-zeiten","reservierungen","inventur","rezepte"];
+// Tabs folgen den Fähigkeiten der Rolle; Basis-Tabs (Meine Schichten/Zeiten) hat jeder.
+const TAB_CAPS={heute:"auswertung",reservierungen:"reservierungen",schichtplan:"schichtplan",
+  "meine-schichten":"","meine-zeiten":"",inventur:"inventur",rezepte:"rezepte",karte:"karte.admin",
+  auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin"};
+const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","inventur","rezepte","karte","auswertung","ablaeufe","team"];
+const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
   $("gate").style.display="none"; $("app").style.display="";
-  $("ttl").textContent = ME.admin ? "Team & Zeiten" : "Servus, "+ME.name;
+  $("ttl").textContent = cap("team.admin") ? "Team & Zeiten" : "Servus, "+(ME.vorname||ME.name);
   const erlaubt=erlaubteTabs();
   document.querySelectorAll(".tab").forEach(t=>{ t.style.display=erlaubt.includes(t.dataset.v)?"":"none"; });
   const wunsch=location.hash.replace("#","");
@@ -690,16 +698,26 @@ function starte(){
 async function boot(){
   const r=await fetch("/api/me");
   if(r.ok){ ME=await r.json(); starte(); }
-  else { $("gate").style.display=""; $("app").style.display="none"; $("gatePin").focus(); }
+  else { $("gate").style.display=""; $("app").style.display="none"; }
 }
-$("gateForm").addEventListener("submit",async e=>{
-  e.preventDefault();
-  const pin=$("gatePin").value.trim();
-  if(pin.length!==4) return;
-  const r=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
-  if(!r.ok){ $("gateFehler").textContent="PIN unbekannt – bitte noch einmal."; $("gatePin").value=""; return; }
-  $("gateFehler").textContent=""; $("gatePin").value="";
-  boot();
+// Passkey-Login direkt im Arbeitsbereich (gleiche Zeremonie wie am Terminal).
+const b2a=(s)=>{ s=s.replace(/-/g,"+").replace(/_/g,"/"); const bin=atob(s+"=".repeat((4-s.length%4)%4));
+  const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u.buffer; };
+const a2b=(buf)=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+$("gatePasskey").addEventListener("click",async ()=>{
+  $("gateFehler").textContent="";
+  try{
+    const opts=await fetch("/api/passkey/login/optionen",{method:"POST"}).then(r=>r.json());
+    opts.challenge=b2a(opts.challenge);
+    (opts.allowCredentials||[]).forEach(c=>c.id=b2a(c.id));
+    const cred=await navigator.credentials.get({publicKey:opts});
+    const antwort={id:cred.id, rawId:a2b(cred.rawId), type:cred.type, clientExtensionResults:cred.getClientExtensionResults(),
+      response:{clientDataJSON:a2b(cred.response.clientDataJSON), authenticatorData:a2b(cred.response.authenticatorData),
+        signature:a2b(cred.response.signature), userHandle:cred.response.userHandle?a2b(cred.response.userHandle):null}};
+    const r=await fetch("/api/passkey/login/abschluss",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(antwort)});
+    if(!r.ok){ $("gateFehler").textContent=(await r.json()).fehler||"Anmeldung fehlgeschlagen."; return; }
+    boot();
+  }catch(e){ if(e.name!=="NotAllowedError") $("gateFehler").textContent="Das hat nicht geklappt: "+e.message; }
 });
 $("btnAbmelden").addEventListener("click",async ()=>{
   await fetch("/api/session",{method:"DELETE"});
@@ -776,8 +794,8 @@ async function loadRes(){
   $("resKpis").style.display=kpi?"grid":"none";
   if(kpi){ $("kGaeste").textContent=kpi.gaeste; $("kDrinnen").textContent=kpi.drinnen;
     $("kDraussen").textContent=kpi.draussen; $("kAuslastung").textContent=kpi.auslastung+" %"; }
-  $("kapBlock").style.display=ME.admin?"":"none";
-  if(ME.admin && !$("kapDrinnen").value){
+  $("kapBlock").style.display=cap("reservierungen")?"":"none";
+  if(cap("reservierungen") && !$("kapDrinnen").value){
     const kap=await fetch("/api/kapazitaet").then(x=>x.json());
     $("kapDrinnen").value=kap.drinnen; $("kapDraussen").value=kap.draussen;
     $("kapPuffer").value=kap.puffer;
@@ -945,7 +963,7 @@ async function mzWerFuellen(){
 }
 
 async function loadMz(){
-  const admin=!!ME.admin;
+  const admin=cap("zeiten.admin");
   $("mzTitel").textContent=admin?"Zeiten":"Meine Zeiten";
   $("mzHinweis").style.display=admin?"none":"";
   $("mzAdminWerkzeuge").style.display=admin?"":"none";
@@ -1223,11 +1241,11 @@ let rzDetail=null; // aufgeklapptes Rezept (Zubereitung)
 
 async function loadKueche(){
   const laden=[fetch("/api/rezepte").then(x=>x.json()), fetch("/api/gerichte").then(x=>x.json())];
-  if(ME.admin) laden.push(fetch("/api/inventar").then(x=>x.json()));
+  if(cap("rezepte.admin")) laden.push(fetch("/api/inventar").then(x=>x.json()));
   const [rz,ge,inv]=await Promise.all(laden);
   REZEPTE=rz; GERICHTE=ge; if(inv) INV_ALLE=inv;
-  $("geNeuKnopf").style.display=ME.admin&&!geEdit?"":"none";
-  $("rzNeuKnopf").style.display=ME.admin&&!rzEdit?"":"none";
+  $("geNeuKnopf").style.display=cap("rezepte.admin")&&!geEdit?"":"none";
+  $("rzNeuKnopf").style.display=cap("rezepte.admin")&&!rzEdit?"":"none";
   renderGerichte(); renderRezepte();
 }
 
@@ -1247,7 +1265,7 @@ function renderGerichte(){
       '</div>'+
       '<div class="res-akt">'+
         (g.komponenten.length?'<button class="ok" data-gekochen="'+g.id+'">1× verkauft</button>':'')+
-        (ME.admin?'<button data-geedit="'+g.id+'">Bearbeiten</button>'+
+        (cap("rezepte.admin")?'<button data-geedit="'+g.id+'">Bearbeiten</button>'+
         '<button class="no" data-gedel="'+g.id+'">Löschen</button>':'')+
       '</div></div>';
   }).join("");
@@ -1289,10 +1307,10 @@ function renderRezepte(){
         (offen?'<div class="rz-schritte"><div class="rz-schritte-titel">Zubereitung</div>'+
           (schritte.length
             ?'<ol>'+schritte.map(s=>'<li>'+esc(s)+'</li>').join("")+'</ol>'
-            :'<p style="font-style:italic; color:var(--grey); margin:6px 0 0">Noch keine Anleitung hinterlegt'+(ME.admin?' – über „Bearbeiten“ ergänzen.':'.')+'</p>')+
+            :'<p style="font-style:italic; color:var(--grey); margin:6px 0 0">Noch keine Anleitung hinterlegt'+(cap("rezepte.admin")?' – über „Bearbeiten“ ergänzen.':'.')+'</p>')+
         '</div>':'')+
       '</div>'+
-      (ME.admin?'<div class="res-akt">'+
+      (cap("rezepte.admin")?'<div class="res-akt">'+
         '<button data-rzedit="'+r.id+'">Bearbeiten</button>'+
         '<button class="no" data-rzdel="'+r.id+'">Löschen</button>'+
       '</div>':'')+
@@ -1442,7 +1460,7 @@ const spIso=d=>d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
 function spTage(){ const mo=spMontag();
   return Array.from({length:7},(_,i)=>{const d=new Date(mo); d.setDate(d.getDate()+i); return spIso(d);}); }
 const spKurz=iso=>{ const [,m,t]=iso.split("-").map(Number); return p2(t)+"."+p2(m)+"."; };
-const passtAuf=(m,rolle)=>!!m.admin || m.role.trim().toLowerCase()===rolle.trim().toLowerCase();
+const passtAuf=(m,rolle)=>(m.caps||[]).some(c=>c==="*"||c==="schichtplan") || m.role.trim().toLowerCase()===rolle.trim().toLowerCase();
 
 async function loadSp(){
   if(!$("spDatum").value) $("spDatum").value=heuteISO();
@@ -1458,7 +1476,7 @@ async function loadSp(){
   for(const m of spTeam) (gruppen[m.role]=gruppen[m.role]||[]).push(m);
   $("spChips").innerHTML=Object.entries(gruppen).map(([rolle,leute])=>
     '<div class="sp-gruppe">'+esc(rolle)+'</div>'+
-    leute.map(m=>'<span class="sp-chip" draggable="true" data-mid="'+m.id+'" data-role="'+esc(m.role)+'" data-admin="'+(m.admin?1:0)+'">'+esc(m.name)+'</span>').join("")
+    leute.map(m=>'<span class="sp-chip" draggable="true" data-mid="'+m.id+'" data-role="'+esc(m.role)+'" data-admin="'+((m.caps||[]).some(c=>c==="*"||c==="schichtplan")?1:0)+'">'+esc(m.name)+'</span>').join("")
   ).join("") || '<span class="empty">Kein Team angelegt</span>';
 
   // Wochenraster – gleiche Schichten (Rolle + Zeit) werden zu einer Karte mit mehreren Plätzen gruppiert.
@@ -1680,7 +1698,7 @@ document.querySelectorAll("[data-inv]").forEach(b=>b.addEventListener("click",()
 
 async function loadInventur(){
   // Mitarbeiter zählen nur den Ist-Bestand; Artikel, Soll & Co. pflegt der Admin.
-  $("invAdminNeu").style.display=ME.admin?"":"none";
+  $("invAdminNeu").style.display=cap("inventur.admin")?"":"none";
   const nachbestellen=invBereich==="nachbestellen";
   const url="/api/inventar"+(invBereich==="alle"||nachbestellen?"":"?bereich="+invBereich);
   invDaten=await fetch(url).then(x=>x.json());
@@ -1721,7 +1739,7 @@ async function loadInventur(){
         '<small>'+INV_LABEL[a.bereich]+(a.notiz?' · '+esc(a.notiz):'')+'</small></div>'+
       '<div class="res-akt">'+
         '<button class="ok" data-ivzahl="'+i+'">Speichern</button>'+
-        (ME.admin?'<button data-ivedit="'+a.id+'">Bearbeiten</button>'+
+        (cap("inventur.admin")?'<button data-ivedit="'+a.id+'">Bearbeiten</button>'+
         '<button class="no" data-ivdel="'+a.id+'">Löschen</button>':'')+
       '</div></div>';
   }).join("");
@@ -1776,12 +1794,27 @@ $("btnInvNeu").addEventListener("click",async ()=>{
 /* ===== VIEW 3: TEAM (CRUD) + Rollen-Katalog ===== */
 let editId=null, ROLLEN=[];
 
+let ROLLEN_VOLL=[], CAP_KATALOG={};
 async function ladeRollen(){
-  ROLLEN=await fetch("/api/rollen").then(x=>x.json());
+  const d=await fetch("/api/rollen").then(x=>x.json());
+  ROLLEN_VOLL=d.rollen; CAP_KATALOG=d.katalog;
+  ROLLEN=ROLLEN_VOLL.map(r=>r.name);
   const optionen=(gewaehlt)=>ROLLEN.map(r=>'<option'+(r===gewaehlt?" selected":"")+'>'+esc(r)+'</option>').join("");
   $("newRole").innerHTML=optionen("Service");
-  $("rollenListe").innerHTML=ROLLEN.map(r=>
-    '<span class="r-chip">'+esc(r)+'<button data-rolledel="'+esc(r)+'" title="Rolle löschen">×</button></span>').join("");
+  // Rollen-Editor: pro Rolle ein Bündel aus Fähigkeits-Chips.
+  $("rollenListe").innerHTML=ROLLEN_VOLL.map(r=>{
+    const alles=r.caps.includes("*");
+    const chip=(key,label,an)=>'<button type="button" class="tag-toggle cap-toggle" data-capkey="'+esc(key)+'" aria-pressed="'+an+'">'+esc(label)+'</button>';
+    return '<div class="card regel-karte rolle-karte" data-rolle="'+esc(r.name)+'">'+
+      '<div class="edit-zeile" style="justify-content:space-between">'+
+        '<b style="font-family:var(--serif); font-size:18px; color:var(--wald)">'+esc(r.name)+'</b>'+
+        '<div class="res-akt"><button class="ok" data-rolsave="'+esc(r.name)+'">Speichern</button>'+
+        '<button class="no" data-rolledel="'+esc(r.name)+'">Löschen</button></div>'+
+      '</div>'+
+      '<div class="regel-tage">'+chip("*","Alles (Inhaber)",alles)+
+        Object.entries(CAP_KATALOG).map(([k,l])=>chip(k,l,alles||r.caps.includes(k))).join("")+'</div>'+
+    '</div>';
+  }).join("")||'<div class="empty">Noch keine Rollen</div>';
   return optionen;
 }
 
@@ -1791,9 +1824,9 @@ async function loadTeam(){
   $("teamList").innerHTML = list.length ? list.map(m=>{
     if(m.id===editId){
       return '<div class="card row">'+
-        '<input class="rowinput nm" id="eName" value="'+esc(m.name)+'">'+
+        '<input class="rowinput nm" id="eVorname" value="'+esc(m.vorname||"")+'" placeholder="Vorname">'+
+        '<input class="rowinput nm" id="eNachname" value="'+esc(m.nachname||"")+'" placeholder="Nachname">'+
         '<select class="rowinput rl" id="eRole">'+optionen(m.role)+'</select>'+
-        '<input class="rowinput pn" id="ePin" value="'+esc(m.pin)+'" maxlength="4" inputmode="numeric">'+
         '<input class="rowinput code" id="eCode" value="'+esc(m.ma_code||"")+'" placeholder="MA-Code" maxlength="10">'+
         '<input class="rowinput pnr" id="ePnr" value="'+esc(m.personalnr||"")+'" placeholder="Personal-Nr." maxlength="12" inputmode="numeric">'+
         '<input class="rowinput soll" id="eSoll" value="'+(m.soll_std==null?"":esc(String(m.soll_std)))+'" placeholder="Soll h" maxlength="5" inputmode="decimal">'+
@@ -1802,34 +1835,84 @@ async function loadTeam(){
     }
     const meta=[esc(m.role)]; if(m.ma_code) meta.push(esc(m.ma_code)); if(m.personalnr) meta.push(esc(m.personalnr));
     const soll=m.soll_std==null?"Abruf":esc(String(m.soll_std))+" h/Wo";
-    return '<div class="card row"><div class="nm">'+esc(m.name)+'<small>'+meta.join(" · ")+'</small></div>'+
+    const voll=(m.caps||[]).includes("*");
+    const link=inviteUrls[m.id];
+    return '<div class="card row" style="flex-wrap:wrap"><div class="nm">'+esc(m.name)+'<small>'+meta.join(" · ")+'</small></div>'+
       '<span class="soll">'+soll+'</span>'+
-      (m.admin?'<span class="tag in">Admin</span>':'')+
-      '<span class="pin">PIN '+esc(m.pin)+'</span>'+
+      (voll?'<span class="tag in">Inhaber</span>':'')+
+      (m.hatPasskey?'<span class="tag in" title="Passkey eingerichtet">🔑 Passkey</span>'
+                   :'<span class="tag out" title="Noch kein Passkey">ohne Passkey</span>')+
+      (m.hatPasskey
+        ?'<button class="iconbtn" data-pkreset="'+m.id+'" title="Alle Passkeys entfernen – danach neu einladen">Passkey zurücksetzen</button>'
+        :'<button class="iconbtn edit" data-einladung="'+m.id+'">Einladungslink</button>')+
       '<button class="iconbtn edit" data-edit="'+m.id+'">Bearbeiten</button>'+
-      '<button class="iconbtn del" data-del="'+m.id+'">Löschen</button></div>';
+      '<button class="iconbtn del" data-del="'+m.id+'">Löschen</button>'+
+      (link?'<div class="invite-zeile"><input readonly value="'+esc(link)+'" onclick="this.select()">'+
+            '<button class="iconbtn edit" data-kopieren="'+esc(link)+'">Kopieren</button>'+
+            '<small>7 Tage gültig · einmal nutzbar</small></div>':'')+
+    '</div>';
   }).join("") : '<div class="empty">Noch keine Mitarbeiter</div>';
 }
+let inviteUrls={};
 $("teamList").addEventListener("click",async e=>{
   const t=e.target;
   if(t.dataset.edit){ editId=t.dataset.edit; return loadTeam(); }
   if(t.dataset.cancel!==undefined){ editId=null; return loadTeam(); }
   if(t.dataset.del){ if(confirm("Mitarbeiter wirklich löschen? Auch die Zeiten werden entfernt.")){ await fetch("/api/mitarbeiter/"+t.dataset.del,{method:"DELETE"}); loadTeam(); } return; }
+  if(t.dataset.einladung){
+    const r=await fetch("/api/mitarbeiter/"+t.dataset.einladung+"/einladung",{method:"POST"});
+    const d=await r.json();
+    if(!r.ok){ alert(d.fehler||"Einladung konnte nicht erstellt werden"); return; }
+    inviteUrls[t.dataset.einladung]=d.url;
+    return loadTeam();
+  }
+  if(t.dataset.kopieren){
+    try{ await navigator.clipboard.writeText(t.dataset.kopieren); t.textContent="Kopiert ✓"; }
+    catch{ alert("Bitte den Link manuell markieren und kopieren."); }
+    return;
+  }
+  if(t.dataset.pkreset){
+    if(!confirm("Alle Passkeys dieser Person entfernen? Sie braucht danach einen neuen Einladungslink.")) return;
+    await fetch("/api/mitarbeiter/"+t.dataset.pkreset+"/passkeys",{method:"DELETE"});
+    return loadTeam();
+  }
   if(t.dataset.save){
-    const body={name:$("eName").value.trim(),role:$("eRole").value.trim(),pin:$("ePin").value.trim(),
+    const body={vorname:$("eVorname").value.trim(),nachname:$("eNachname").value.trim(),role:$("eRole").value.trim(),
       ma_code:$("eCode").value.trim(),personalnr:$("ePnr").value.trim(),soll_std:$("eSoll").value.trim()};
     const r=await fetch("/api/mitarbeiter/"+t.dataset.save,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
     editId=null; loadTeam();
   }
 });
-/* Rollen-Katalog pflegen */
+/* Rollen = Capability-Bundles pflegen */
 $("rollenListe").addEventListener("click",async e=>{
-  const b=e.target.closest("[data-rolledel]"); if(!b) return;
-  if(!confirm('Rolle "'+b.dataset.rolledel+'" löschen?')) return;
-  const r=await fetch("/api/rollen/"+encodeURIComponent(b.dataset.rolledel),{method:"DELETE"});
-  if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
-  loadTeam();
+  const chip=e.target.closest(".cap-toggle");
+  if(chip){
+    const karte=chip.closest(".rolle-karte");
+    const an=chip.getAttribute("aria-pressed")!=="true";
+    chip.setAttribute("aria-pressed",String(an));
+    // „Alles“ schaltet die Einzel-Chips mit; ein Einzel-Chip aus löst „Alles“.
+    if(chip.dataset.capkey==="*") karte.querySelectorAll(".cap-toggle").forEach(c=>c.setAttribute("aria-pressed",String(an)));
+    else if(!an) karte.querySelector('.cap-toggle[data-capkey="*"]').setAttribute("aria-pressed","false");
+    return;
+  }
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.rolsave){
+    const karte=b.closest(".rolle-karte");
+    const gedrueckt=[...karte.querySelectorAll('.cap-toggle[aria-pressed="true"]')].map(c=>c.dataset.capkey);
+    const caps=gedrueckt.includes("*")?["*"]:gedrueckt;
+    const r=await fetch("/api/rollen/"+encodeURIComponent(b.dataset.rolsave),{method:"PUT",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({caps})});
+    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+    b.textContent="Gespeichert ✓"; setTimeout(()=>{ b.textContent="Speichern"; },1500);
+    return;
+  }
+  if(b.dataset.rolledel){
+    if(!confirm('Rolle "'+b.dataset.rolledel+'" löschen?')) return;
+    const r=await fetch("/api/rollen/"+encodeURIComponent(b.dataset.rolledel),{method:"DELETE"});
+    if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
+    loadTeam();
+  }
 });
 $("btnRolleNeu").addEventListener("click",async ()=>{
   const name=$("rolleNeu").value.trim();
@@ -1842,12 +1925,12 @@ $("btnRolleNeu").addEventListener("click",async ()=>{
 });
 
 $("btnAdd").addEventListener("click",async ()=>{
-  const body={name:$("newName").value.trim(),role:$("newRole").value.trim(),pin:$("newPin").value.trim(),
+  const body={vorname:$("newVorname").value.trim(),nachname:$("newNachname").value.trim(),role:$("newRole").value.trim(),
     ma_code:$("newCode").value.trim(),personalnr:$("newPnr").value.trim(),soll_std:$("newSoll").value.trim()};
-  if(!body.name||!body.role){ alert("Name und Rolle sind Pflicht"); return; }
+  if(!body.vorname||!body.role){ alert("Vorname und Rolle sind Pflicht"); return; }
   const r=await fetch("/api/mitarbeiter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){ alert((await r.json()).error||"Fehler"); return; }
-  $("newName").value=""; $("newRole").value=""; $("newPin").value=""; $("newCode").value=""; $("newPnr").value=""; $("newSoll").value=""; loadTeam();
+  $("newVorname").value=""; $("newNachname").value=""; $("newCode").value=""; $("newPnr").value=""; $("newSoll").value=""; loadTeam();
 });
 
 /* ===== ABLÄUFE / CHECKLISTEN (Admin) ===== */

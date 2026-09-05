@@ -42,6 +42,31 @@ ${baseCss}
   .loginfoot{margin-top:auto; padding-top:2.5vh; font-size:12px; color:var(--grey); text-align:center;}
   .loginfoot a{color:var(--grey);}
 
+  /* ---------- Passkey-Login ---------- */
+  .pk-bereich{display:flex; flex-direction:column; align-items:center; width:min(420px,88vw); margin-top:1vh;}
+  .pk-anmelden{
+    display:flex; align-items:center; justify-content:center; gap:12px; width:100%;
+    border:none; border-radius:18px; padding:22px; background:var(--wald); color:#fff;
+    font-family:var(--sans); font-size:clamp(17px,4.6vw,21px); font-weight:600; cursor:pointer;
+    letter-spacing:.3px; box-shadow:0 10px 28px -14px rgba(60,74,59,.55);
+  }
+  .pk-anmelden:active{background:#2C382C;}
+  .pk-anmelden svg{width:26px; height:26px; flex:none;}
+  .pk-anmelden[disabled]{opacity:.6;}
+  .pk-neu{
+    margin-top:14px; width:100%; background:none; border:1.5px solid var(--line); border-radius:18px;
+    padding:16px; font-family:var(--sans); font-size:clamp(14px,3.8vw,16px); color:var(--clay); cursor:pointer;
+  }
+  .pk-fehler{min-height:20px; margin-top:12px; font-size:14px; color:var(--rot); text-align:center;}
+  .pk-form{width:100%; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:24px 22px;}
+  .pk-form-titel{font-family:var(--serif); font-size:clamp(22px,5.4vw,28px); color:var(--wald); text-align:center; margin-bottom:8px;}
+  .pk-form-text{font-size:14px; color:var(--clay); text-align:center; margin:0 0 18px; line-height:1.5;}
+  .pk-form input{
+    width:100%; margin-bottom:12px; padding:15px 16px; border:1.5px solid var(--line); border-radius:14px;
+    font-size:17px; font-family:var(--sans); background:var(--creme); color:var(--ink);
+  }
+  .pk-form input:focus{outline:none; border-color:var(--wald-hell);}
+
   /* ---------- HOME (nach Login) ---------- */
   .topbar{display:flex; align-items:center; gap:12px; padding:14px 18px; background:var(--card); border-bottom:1px solid var(--line);}
   .topbar img{height:38px; width:auto;}
@@ -193,22 +218,37 @@ ${baseCss}
 </head>
 <body>
 
-<!-- ============ LOGIN ============ -->
+<!-- ============ LOGIN (Passkey) ============ -->
 <section id="screen-login" class="screen active">
   <img class="logo" src="/logo.png" alt="Hand aufs Herz">
   <div class="clockwrap">
     <div class="clock" id="bigClock">--:--<span class="sec">:--</span></div>
     <div class="date" id="bigDate">&nbsp;</div>
   </div>
-  <div class="prompt">Mit <b>4-stelligem PIN</b> anmelden</div>
-  <div class="dots" id="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-  <div class="pad" id="pad">
-    <div class="key" data-k="1">1</div><div class="key" data-k="2">2</div><div class="key" data-k="3">3</div>
-    <div class="key" data-k="4">4</div><div class="key" data-k="5">5</div><div class="key" data-k="6">6</div>
-    <div class="key" data-k="7">7</div><div class="key" data-k="8">8</div><div class="key" data-k="9">9</div>
-    <div class="key action clear" data-k="clear">Löschen</div><div class="key" data-k="0">0</div>
-    <div class="key action enter" data-k="enter">OK</div>
+
+  <div class="pk-bereich" id="pkStart">
+    <button class="pk-anmelden" id="btnPkLogin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8.5" cy="8.5" r="4.5"/><path d="M3 21c0-3.3 2.5-5.5 5.5-5.5S14 17.7 14 21"/>
+        <path d="M15 12.5l6-6M18.5 6l2.5 2.5M16.8 7.7l1.8 1.8"/></svg>
+      Mit Passkey anmelden
+    </button>
+    <div class="pk-fehler" id="pkFehler"></div>
+    <button class="pk-neu" id="btnPkNeuZeigen">Neu hier? Konto erstellen</button>
   </div>
+
+  <div class="pk-bereich" id="pkRegistrierung" style="display:none">
+    <div class="pk-form">
+      <div class="pk-form-titel">Konto erstellen</div>
+      <p class="pk-form-text">Einmal Name eintragen, dann sichert dein Gerät den Zugang (Fingerabdruck, Gesicht oder Geräte-Code).</p>
+      <input id="pkVorname" placeholder="Vorname" autocomplete="given-name" maxlength="60">
+      <input id="pkNachname" placeholder="Nachname" autocomplete="family-name" maxlength="60">
+      <div class="pk-fehler" id="pkRegFehler"></div>
+      <button class="pk-anmelden" id="btnPkRegistrieren">Passkey erstellen</button>
+      <button class="pk-neu" id="btnPkZurueck">← Zurück zur Anmeldung</button>
+    </div>
+  </div>
+
   <div class="loginfoot">Hand aufs Herz · Team-Terminal &nbsp;·&nbsp; <a href="/team">Team &amp; Zeiten</a></div>
 </section>
 
@@ -262,22 +302,19 @@ ${baseCss}
       <div class="mk-titel">Abläufe</div>
       <div class="prozesse" id="prozesse"></div>
       <div class="mk-titel">Werkzeuge</div>
-      <template id="tplMitarbeiter">
-        <a class="tile werkzeug" href="/team#meine-schichten"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
-      </template>
+      <!-- Werkzeug-Karten nach Fähigkeiten der Rolle (data-cap leer = für alle). -->
       <template id="tplWerkzeuge">
-        <a class="tile werkzeug" href="/team#meine-zeiten"><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
-        <a class="tile werkzeug" href="/team#reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
-        <a class="tile werkzeug" href="/team#inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
-        <a class="tile werkzeug" href="/team#rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
-      </template>
-      <template id="tplAdmin">
-        <a class="tile werkzeug" href="/team#heute"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
-        <a class="tile werkzeug" href="/team#schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
-        <a class="tile werkzeug" href="/team#auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
-        <a class="tile werkzeug" href="/team#ablaeufe"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
-        <a class="tile werkzeug" href="/team#karte"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
-        <a class="tile werkzeug" href="/team#team"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+        <a class="tile werkzeug" href="/team#meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
+        <a class="tile werkzeug" href="/team#meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+        <a class="tile werkzeug" href="/team#reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
+        <a class="tile werkzeug" href="/team#inventur" data-cap="inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
+        <a class="tile werkzeug" href="/team#rezepte" data-cap="rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
+        <a class="tile werkzeug" href="/team#heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
+        <a class="tile werkzeug" href="/team#schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
+        <a class="tile werkzeug" href="/team#auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+        <a class="tile werkzeug" href="/team#ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
+        <a class="tile werkzeug" href="/team#karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
+        <a class="tile werkzeug" href="/team#team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
       </template>
       <div class="tiles" id="tilesWerkzeuge"></div>
       <button class="bigbtn" id="btnLogout" style="background:none; border:1px solid var(--line); color:var(--grey); margin-top:18px;">Abmelden</button>
@@ -345,36 +382,120 @@ function show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.r
 let toastT=null;
 function toast(html,kind,ms){ const t=$("toast"); t.className="toast show"+(kind==="out"?" out":""); t.innerHTML=html; clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),ms||2200); }
 
-/* ---------- PIN-Pad ---------- */
-let entry=""; const dotsEl=$("dots");
-function renderDots(){ dotsEl.querySelectorAll(".dot").forEach((d,i)=>d.classList.toggle("filled",i<entry.length)); }
-function pinFail(){ dotsEl.classList.add("error"); setTimeout(()=>{entry="";dotsEl.classList.remove("error");renderDots();},500); }
-function press(k){
-  if(k==="clear"){ entry=""; dotsEl.classList.remove("error"); renderDots(); return; }
-  if(k==="enter"){ submit(); return; }
-  if(entry.length>=4) return;
-  dotsEl.classList.remove("error"); entry+=k; renderDots();
-  if(entry.length===4) setTimeout(submit,160);
-}
-$("pad").addEventListener("click",e=>{ const k=e.target.closest(".key"); if(k) press(k.dataset.k); });
-window.addEventListener("keydown",e=>{
-  if(!$("screen-login").classList.contains("active")) return;
-  if(e.key>="0"&&e.key<="9") press(e.key);
-  else if(e.key==="Enter") press("enter");
-  else if(e.key==="Backspace"||e.key==="Escape") press("clear");
-});
+/* ---------- Passkey-Anmeldung (WebAuthn) ---------- */
+let current=null; // {id,name,vorname,nachname,role,admin,clockedIn,since,klaerung}
 
-/* ---------- Anmeldung ---------- */
-let current=null; // {id,name,role,pin,clockedIn,since}
-async function submit(){
-  if(entry.length!==4){ pinFail(); return; }
-  const pin=entry; entry=""; renderDots();
-  // Login = Session-Cookie setzen; damit kennt auch das Dashboard die Rolle.
-  const res=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
-  if(!res.ok){ pinFail(); return; }
-  current=await res.json();
-  zeigeEntscheid();
+// base64url <-> ArrayBuffer für die WebAuthn-API.
+const b2a=(s)=>{ s=s.replace(/-/g,"+").replace(/_/g,"/"); const bin=atob(s+"=".repeat((4-s.length%4)%4));
+  const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u.buffer; };
+const a2b=(buf)=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+
+function pkFehler(ziel,text){ $(ziel).textContent=text||""; }
+
+async function pkLogin(){
+  pkFehler("pkFehler","");
+  const knopf=$("btnPkLogin"); knopf.disabled=true;
+  try{
+    const opts=await fetch("/api/passkey/login/optionen",{method:"POST"}).then(r=>r.json());
+    opts.challenge=b2a(opts.challenge);
+    (opts.allowCredentials||[]).forEach(c=>c.id=b2a(c.id));
+    const cred=await navigator.credentials.get({publicKey:opts});
+    const antwort={
+      id:cred.id, rawId:a2b(cred.rawId), type:cred.type,
+      clientExtensionResults:cred.getClientExtensionResults(),
+      response:{
+        clientDataJSON:a2b(cred.response.clientDataJSON),
+        authenticatorData:a2b(cred.response.authenticatorData),
+        signature:a2b(cred.response.signature),
+        userHandle:cred.response.userHandle?a2b(cred.response.userHandle):null,
+      },
+    };
+    const r=await fetch("/api/passkey/login/abschluss",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(antwort)});
+    const d=await r.json();
+    if(!r.ok){ pkFehler("pkFehler",d.fehler||"Anmeldung fehlgeschlagen."); return; }
+    current=d;
+    zeigeEntscheid();
+  }catch(e){
+    if(e.name!=="NotAllowedError") pkFehler("pkFehler","Das hat nicht geklappt: "+e.message);
+  }finally{ knopf.disabled=false; }
 }
+
+// Registrierung: entweder Bootstrap (allererster Passkey = Inhaber) oder per Einladungslink.
+const einladungCode=new URLSearchParams(location.search).get("einladung");
+
+async function pkRegistrieren(){
+  pkFehler("pkRegFehler","");
+  const vorname=$("pkVorname").value.trim(), nachname=$("pkNachname").value.trim();
+  if(!einladungCode && !vorname){ pkFehler("pkRegFehler","Bitte den Vornamen eintragen."); return; }
+  const knopf=$("btnPkRegistrieren"); knopf.disabled=true;
+  try{
+    const r1=await fetch("/api/passkey/registrierung/optionen",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(einladungCode?{einladung:einladungCode}:{vorname,nachname})});
+    const opts=await r1.json();
+    if(!r1.ok){ pkFehler("pkRegFehler",opts.fehler||"Konto konnte nicht angelegt werden."); return; }
+    opts.challenge=b2a(opts.challenge);
+    opts.user.id=b2a(opts.user.id);
+    (opts.excludeCredentials||[]).forEach(c=>c.id=b2a(c.id));
+    const cred=await navigator.credentials.create({publicKey:opts});
+    const antwort={
+      id:cred.id, rawId:a2b(cred.rawId), type:cred.type,
+      clientExtensionResults:cred.getClientExtensionResults(),
+      response:{
+        clientDataJSON:a2b(cred.response.clientDataJSON),
+        attestationObject:a2b(cred.response.attestationObject),
+        transports:cred.response.getTransports?cred.response.getTransports():[],
+      },
+    };
+    const r2=await fetch("/api/passkey/registrierung/abschluss",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(antwort)});
+    const d=await r2.json();
+    if(!r2.ok){ pkFehler("pkRegFehler",d.fehler||"Passkey konnte nicht gespeichert werden."); return; }
+    current=d;
+    $("pkVorname").value=""; $("pkNachname").value="";
+    $("pkRegistrierung").style.display="none"; $("pkStart").style.display="";
+    toast("Willkommen, "+esc(current.vorname)+"! <span class='big'>Passkey eingerichtet</span>","in");
+    zeigeEntscheid();
+  }catch(e){
+    if(e.name!=="NotAllowedError") pkFehler("pkRegFehler","Das hat nicht geklappt: "+e.message);
+  }finally{ knopf.disabled=false; }
+}
+
+$("btnPkLogin").addEventListener("click",pkLogin);
+$("btnPkRegistrieren").addEventListener("click",pkRegistrieren);
+$("btnPkNeuZeigen").addEventListener("click",()=>{ $("pkStart").style.display="none"; $("pkRegistrierung").style.display=""; });
+$("btnPkZurueck").addEventListener("click",()=>{ $("pkRegistrierung").style.display="none"; $("pkStart").style.display=""; });
+
+// Start-Screen je nach Lage: Einladungslink -> Begrüßung; Bootstrap -> Konto erstellen; sonst nur Anmelden.
+(async ()=>{
+  if(einladungCode){
+    const r=await fetch("/api/einladung/"+encodeURIComponent(einladungCode));
+    const d=await r.json();
+    if(!r.ok){ pkFehler("pkFehler",d.fehler||"Einladung ungültig."); $("btnPkNeuZeigen").style.display="none"; return; }
+    $("pkStart").style.display="none"; $("pkRegistrierung").style.display="";
+    $("pkVorname").style.display="none"; $("pkNachname").style.display="none";
+    document.querySelector(".pk-form-titel").textContent="Servus, "+d.vorname+"!";
+    document.querySelector(".pk-form-text").textContent=
+      "Du bist als "+d.role+" eingeladen. Erstell jetzt deinen Passkey – danach meldest du dich damit am Terminal an.";
+    $("btnPkZurueck").style.display="none";
+    return;
+  }
+  const s=await fetch("/api/passkey/status").then(r=>r.json()).catch(()=>({bootstrap:false}));
+  if(s.bootstrap){
+    $("btnPkNeuZeigen").textContent="Erstes Konto anlegen (wird Inhaber)";
+  }else{
+    $("btnPkNeuZeigen").style.display="none";
+    pkFehler("pkFehler","");
+    const hinweis=document.createElement("div");
+    hinweis.style.cssText="margin-top:14px; font-size:13px; color:var(--grey); text-align:center;";
+    hinweis.textContent="Neu im Team? Dein Admin schickt dir einen Einladungslink.";
+    $("pkStart").appendChild(hinweis);
+  }
+})();
+
+// Läuft noch eine Session (Cookie gültig)? Dann direkt zum Entscheid-Screen.
+fetch("/api/session").then(r=>r.ok?r.json():null).then(d=>{ if(d){ current=d; zeigeEntscheid(); } }).catch(()=>{});
 
 /* Vergessenes Ausstempeln: muss vor allem anderen geklärt werden. */
 function zeigeKlaerung(){
@@ -436,12 +557,14 @@ function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
   { const w=$("mkWho"); if(w) w.textContent="Servus, "+current.name; }
   { const mb=$("menuBack"); if(mb) mb.style.display="none"; }
-  // Werkzeug-Karten nach Rolle: alle sehen Zeiten + Reservierungen, Admins alles.
+  // Werkzeug-Karten nach den Fähigkeiten der eigenen Rolle (Capability-Bundles).
+  const caps=current.caps||[];
+  const darf=(c)=>!c||caps.includes("*")||caps.includes(c);
   const ziel=$("tilesWerkzeuge");
   ziel.innerHTML="";
-  if(!current.admin) ziel.appendChild($("tplMitarbeiter").content.cloneNode(true));
-  ziel.appendChild($("tplWerkzeuge").content.cloneNode(true));
-  if(current.admin) ziel.appendChild($("tplAdmin").content.cloneNode(true));
+  const klon=$("tplWerkzeuge").content.cloneNode(true);
+  klon.querySelectorAll("[data-cap]").forEach(a=>{ if(!darf(a.dataset.cap)) a.remove(); });
+  ziel.appendChild(klon);
   if(current.clockedIn){
     $("statLbl").textContent="Eingestempelt seit";
     $("statSince").textContent=hm(current.since)+" Uhr";
@@ -465,7 +588,7 @@ function updateDuration(){
 
 /* ---------- Ein-/Ausstempeln (Server prüft das ±2-h-Fenster der Schicht) ---------- */
 async function stamp(expected){
-  const r=await fetch("/api/stamp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:current.pin})});
+  const r=await fetch("/api/stamp",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
   const d=await r.json(); // {name,type,ts} oder {fehler,klaerung?}
   if(!r.ok){
     if(d.klaerung){ current.klaerung=d.klaerung; zeigeKlaerung(); }
