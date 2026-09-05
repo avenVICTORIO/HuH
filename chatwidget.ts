@@ -120,7 +120,7 @@ window.chatWidget=(function(){
   const hm=ts=>{ const d=new Date(ts); return p2(d.getHours())+":"+p2(d.getMinutes()); };
   const MON=["Jan","Feb","März","April","Mai","Juni","Juli","Aug","Sep","Okt","Nov","Dez"];
   const mobil=()=>window.innerWidth<=880;
-  const KI_NAME="avenHandAufsHerz"; // Anzeigename der KI-Assistenz (Server: chat.ts KI_NAME)
+  const KI_NAME="avenVictorio"; // Anzeigename der KI-Assistenz (Server: chat.ts KI_NAME)
   let me=null, admin=false, sendeWs=function(){};
   let raeume=[], aktiv=null, nachrichten=[], scrollErzwingen=false, offen=false, geladen=false;
   let kiTippt=null; // {raum, job, text} – die KI schreibt gerade (gestreamt über den WebSocket)
