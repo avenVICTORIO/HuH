@@ -22,7 +22,7 @@ import {
   type RunStatus, type Schema, type State,
 } from "./types";
 
-import router from "./router/flow";
+import router from "./intent-router/flow";
 import confirm from "./confirm/flow";
 import logTime from "./log-time/flow";
 
@@ -270,14 +270,43 @@ function aiFor(): Context["ai"] {
 
 // ------------------------------------------------------------------ For the Skills page
 
+/**
+ * Catalog for the Skills page. Delegations declared by actors (`delegates`) are resolved
+ * into flow nodes ("flow:<id>") and edges labelled handoff/call – so skill-to-skill
+ * delegation is visible in the graph without hand-drawn refs. Static `refs`/`edges`
+ * win when they already cover a target (they carry a chosen position).
+ */
 export function catalog() {
-  return FLOWS.map((f) => ({
-    id: f.id, name: f.name, description: f.description, examples: f.examples, start: f.start,
-    system: !!f.system, component: !!f.component, input: f.input ?? null, output: f.output ?? null,
-    actors: f.actors.map((a) => ({ id: a.id, name: a.name, kind: a.kind, description: a.description, pos: a.pos, input: a.input ?? null, output: a.output ?? null })),
-    refs: (f.refs ?? []).map((r) => ({ ...r, name: flowById(r.flow)?.name ?? r.flow })),
-    edges: f.edges,
-  }));
+  return FLOWS.map((f) => {
+    const refs: { flow: string; pos: { x: number; y: number }; name: string; via: "handoff" | "call" }[] =
+      (f.refs ?? []).map((r) => ({ ...r, name: flowById(r.flow)?.name ?? r.flow, via: "call" as const }));
+    const edges = [...f.edges];
+    for (const a of f.actors) {
+      for (const d of a.delegates ?? []) {
+        const targets = (d.to === "startable" ? startable().map((x) => x.id) : d.to).filter((id) => id !== f.id);
+        targets.forEach((id, i) => {
+          const node = "flow:" + id;
+          let ref = refs.find((r) => r.flow === id);
+          if (!ref) {
+            // Auto layout: stacked to the right of the delegating actor.
+            ref = { flow: id, name: flowById(id)?.name ?? id, via: d.via, pos: { x: a.pos.x + 320, y: a.pos.y + (i - (targets.length - 1) / 2) * 170 } };
+            refs.push(ref);
+          } else ref.via = d.via;
+          if (!edges.some((e) => e.from === a.id && e.to === node)) edges.push({ from: a.id, to: node, label: d.via });
+        });
+      }
+    }
+    return {
+      id: f.id, name: f.name, description: f.description, examples: f.examples, start: f.start,
+      system: !!f.system, component: !!f.component, input: f.input ?? null, output: f.output ?? null,
+      actors: f.actors.map((a) => ({
+        id: a.id, name: a.name, kind: a.kind, description: a.description, pos: a.pos,
+        input: a.input ?? null, output: a.output ?? null,
+        delegates: (a.delegates ?? []).map((d) => ({ via: d.via, to: d.to === "startable" ? startable().map((x) => x.id) : d.to })),
+      })),
+      refs, edges,
+    };
+  });
 }
 
 export async function runs(person: Mitarbeiter, seeAll: boolean, flowId: string | null, limit = 40) {

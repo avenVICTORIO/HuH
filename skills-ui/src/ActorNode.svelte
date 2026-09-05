@@ -3,10 +3,15 @@
   let { data }: { data: any } = $props();
 </script>
 
-<div class="actor {data.kind} {data.ref ? 'ref' : ''} {data.active ? 'active ' + (data.status ?? '') : ''}">
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+<div
+  class="actor {data.kind} {data.ref ? 'ref ' + data.via : ''} {data.active ? 'active ' + (data.status ?? '') : ''}"
+  title={data.ref ? "Zu diesem Skill wechseln" : undefined}
+  onclick={() => { if (data.ref) window.parent.postMessage({ typ: "skill-oeffnen", id: data.id }, "*"); }}
+>
   <Handle type="target" position={Position.Left} />
   <div class="head">
-    <span class="kind">{data.ref ? "⧉ Sub-Flow" : data.kind === "ai" ? "✦ AI actor" : "ƒ code actor"}</span>
+    <span class="kind">{data.ref ? (data.via === "handoff" ? "→ Skill (handoff)" : "⧉ Sub-Flow (call)") : data.kind === "ai" ? "✦ AI actor" : "ƒ code actor"}</span>
     {#if data.start}<span class="start">Start</span>{/if}
     {#if data.active}<span class="pulse" title={data.status}></span>{/if}
   </div>
@@ -25,8 +30,10 @@
 <style>
   .actor { width: 236px; background: #FBF8F2; border: 1.5px solid #E3DBCB; border-radius: 16px; padding: 12px 14px; box-shadow: 0 8px 24px -18px rgba(34,38,31,.5); font-family: Montserrat, system-ui, sans-serif; color: #2B2A26; }
   .actor.ai { border-color: #D9B48F; background: #FBF5EA; }
-  .actor.ref { border-style: dashed; border-color: #6C7F68; background: #EEF2EC; }
-  .ref .kind { color: #3C4A3B; }
+  .actor.ref { border-style: dashed; border-color: #6C7F68; background: #EEF2EC; cursor: pointer; }
+  .actor.ref:hover { box-shadow: 0 0 0 4px rgba(60,74,59,.12); }
+  .actor.ref.handoff { border-color: #B0553A; background: #FBF1EA; }
+  .ref .kind { color: #3C4A3B; } .ref.handoff .kind { color: #B0553A; }
   .actor.active { border-color: #3C4A3B; box-shadow: 0 0 0 4px rgba(60,74,59,.14); }
   .actor.active.waiting { border-color: #B0553A; box-shadow: 0 0 0 4px rgba(176,85,58,.16); }
   .head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }

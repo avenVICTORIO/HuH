@@ -24,6 +24,7 @@ const actor: Actor = {
   kind: "code",
   description: "Prüft Datum und Uhrzeiten, erkennt Überschneidungen mit vorhandenen Zeiten, rechnet die Dauer und ruft den Baustein „Bestätigung“.",
   pos: { x: 340, y: 120 },
+  delegates: [{ via: "call", to: ["confirm"] }],
   input: {
     type: "object",
     required: ["time"],

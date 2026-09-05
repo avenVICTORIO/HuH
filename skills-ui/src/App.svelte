@@ -18,7 +18,7 @@
 
   type Schema = { properties?: Record<string, unknown>; required?: string[] } | null;
   type Actor = { id: string; name: string; kind: "ai" | "code"; description: string; pos: { x: number; y: number }; input: Schema; output: Schema };
-  type Ref = { flow: string; name: string; pos: { x: number; y: number } };
+  type Ref = { flow: string; name: string; via?: "handoff" | "call"; pos: { x: number; y: number } };
   type Flow = { id: string; name: string; start: string; actors: Actor[]; refs?: Ref[]; edges: { from: string; to: string; label?: string }[] };
 
   const keys = (s: Schema) => (s?.properties ? Object.keys(s.properties) : []);
@@ -35,7 +35,12 @@
       id: "flow:" + r.flow,
       type: "actor",
       position: r.pos,
-      data: { id: r.flow, name: r.name, kind: "flow", description: "Sub-Flow – läuft als eigener Lauf, das Ergebnis kommt als „return“ zurück.", ref: true, inKeys: [], outKeys: [], active: false, status: null },
+      data: {
+        id: r.flow, name: r.name, kind: "flow", ref: true, via: r.via ?? "call", inKeys: [], outKeys: [], active: false, status: null,
+        description: r.via === "handoff"
+          ? "Übergabe (handoff): dieser Skill übernimmt die Nachricht, kein Rückweg."
+          : "Sub-Flow (call): läuft als eigener Lauf, das Ergebnis kommt als „return“ zurück.",
+      },
     }));
     nodes = [...actorNodes, ...refNodes];
     const order = (id: string) => { const i = f.actors.findIndex((a) => a.id === id); return i >= 0 ? i : f.actors.length; };

@@ -67,6 +67,11 @@ export type Actor = {
   input?: Schema;
   /** JSON Schema for the state patch this actor returns (validated by the runtime). */
   output?: Schema;
+  /**
+   * Which other flows this actor may delegate to – rendered in the canvas as flow nodes
+   * with "handoff"/"call" edges. `to: "startable"` = every flow the router may start.
+   */
+  delegates?: { via: "handoff" | "call"; to: string[] | "startable" }[];
   handle(message: Message, ctx: Context): Promise<Result>;
 };
 
