@@ -279,11 +279,26 @@ ${baseCss}
   .sk-btn{display:inline-flex; align-items:center; background:var(--card); border:1px solid var(--line); color:var(--wald); border-radius:999px; padding:6px 12px; font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:.04em; cursor:pointer; text-decoration:none; line-height:1;}
   .sk-btn:hover{border-color:var(--wald-hell); background:var(--creme);} .sk-btn.rot{color:var(--rot);} .sk-btn.rot:hover{border-color:#E5C4BB;}
   .sk-btn.gruen{background:var(--wald); border-color:var(--wald); color:#fff;} .sk-btn.gruen:hover{background:#2C382C;}
+  .sk-btn.sm{background:var(--wald); border-color:var(--wald); color:#fff; border-radius:9px; padding:6px 11px; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; box-shadow:0 6px 16px -10px rgba(60,74,59,.6);}
+  .sk-btn.sm:hover{background:#2C382C;}
+  .sk-dialog{border:1px solid var(--line); border-radius:16px; padding:0; width:min(760px,94vw); background:var(--card); color:var(--ink);}
+  .sk-dialog::backdrop{background:rgba(34,38,31,.45);}
+  .sk-dialog-kopf{display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--line);}
+  .sk-dialog-kopf b{font-family:var(--serif); font-size:18px; color:var(--wald);} .sk-dialog-kopf span{flex:1; font-size:12.5px; color:var(--grey);}
+  .sk-dialog textarea{display:block; width:100%; height:min(60vh,520px); border:none; padding:12px 14px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; background:var(--creme); color:var(--ink); resize:none;}
   .sk-kopf-akt{display:flex; gap:8px; align-items:center;}
-  .sk-lauf-kopf{cursor:pointer;} .sk-lauf-kopf .sk-lauf-akt{cursor:default;}
-  .sk-chev{color:var(--grey); font-size:13px; width:14px;}
-  .sk-lauf-zuletzt{margin:6px 0 0 24px; font-size:13px; color:var(--clay); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  /* Lauf-Zeile: kompakt, alles in einer Zeile */
+  .card.sk-lauf{padding:7px 12px; margin-bottom:6px; border-radius:12px;}
+  .sk-lauf-kopf{cursor:pointer; flex-wrap:nowrap; gap:8px; min-width:0;} .sk-lauf-kopf .sk-lauf-akt{cursor:default; flex:none;}
+  .sk-lauf-kopf b{font-size:14.5px; white-space:nowrap;}
+  .sk-lauf-kopf .tag{font-size:10px; padding:3px 8px; flex:none;}
+  .sk-lauf-kopf small{white-space:nowrap; font-size:11px; flex:none;}
+  .sk-lauf-vorschau{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; color:var(--clay);}
+  .sk-chev{color:var(--grey); font-size:12px; width:12px; flex:none;}
+  .sk-btn.sm{padding:5px 10px; font-size:10.5px;}
   .sk-lauf-body{display:none;} .sk-lauf.offen>.sk-lauf-body{display:block;}
+  .sk-lauf.offen .sk-logs{margin-top:8px;}
+  @media (max-width:880px){ .sk-lauf-kopf{flex-wrap:wrap;} .sk-lauf-vorschau{flex-basis:100%; order:9; padding-left:20px;} }
   .sk-logs{margin-top:10px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--creme);}
   .sk-log{display:grid; grid-template-columns:72px 120px 66px 60px minmax(0,1fr) auto; gap:10px; align-items:baseline; padding:8px 12px; border-bottom:1px solid var(--line); font-size:13px;}
   .sk-log:last-child{border-bottom:none;}
@@ -1345,12 +1360,14 @@ function skLaufKarte(l,kinder,tiefe){
   const kids=(kinder.get(l.id)||[]).map(k=>skLaufKarte(k,kinder,tiefe+1)).join("");
   const offen=skOffen.has(l.id);
   const letzte=l.steps.length?skLogText(l.steps[l.steps.length-1].output):"";
+  const d=new Date(l.createdAt), heute=new Date().toDateString()===d.toDateString();
+  const wann=(heute?"":datumSchoen(d.toISOString().slice(0,10)).replace(/ \d{4}$/,"")+" ")+hm(l.createdAt);
   return '<div class="card sk-lauf'+(tiefe?" sk-kind":"")+(offen?" offen":"")+'" data-lauf="'+l.id+'">'+
     '<div class="sk-lauf-kopf" data-sktoggle="'+l.id+'"><span class="sk-chev">'+(offen?"▾":"▸")+'</span><b>'+(tiefe?'↳ ':'')+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
-      '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.createdAt).toISOString().slice(0,10))+' '+hm(l.createdAt)+' · '+l.steps.length+' Schritte</small>'+
-      '<span class="sk-lauf-akt">'+(tiefe?'':'<a class="sk-btn" href="/api/skills/laeufe/'+l.id+'/export" download title="Vollständiges Log als JSON (Lauf, Schritte mit Ein-/Ausgabe, Flow, Chat-Kontext)">Log exportieren</a><button class="sk-btn" data-skcopy="'+l.id+'">Kopieren</button>')+
+      '<span class="sk-lauf-vorschau">'+(offen?'':esc(letzte.replace(/\s+/g," ")))+'</span>'+
+      '<small>'+esc(l.person||"")+' · '+wann+' · '+l.steps.length+(l.steps.length===1?' Schritt':' Schritte')+'</small>'+
+      '<span class="sk-lauf-akt">'+(tiefe?'':'<button class="sk-btn sm" data-skcopy="'+l.id+'" title="Vollständiges Log als JSON kopieren (Lauf, Schritte mit Ein-/Ausgabe, Flow, Chat-Kontext)">Log kopieren</button>')+
         (aktiv?'<button class="sk-btn rot" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</span></div>'+
-    (offen?'':(letzte?'<div class="sk-lauf-zuletzt">'+esc(letzte)+'</div>':''))+
     '<div class="sk-lauf-body"><div class="sk-logs">'+(zeilen||'<div class="empty" style="padding:6px">Noch keine Schritte</div>')+'</div>'+kids+'</div></div>';
 }
 // Aktuellen Actor des jüngsten aktiven Laufs im Canvas hervorheben.
@@ -1377,12 +1394,29 @@ $("skLaeufe").addEventListener("click",async e=>{
   const ab=e.target.closest("[data-skabbruch]"); if(ab){ await fetch("/api/skills/laeufe/"+ab.dataset.skabbruch,{method:"DELETE"}); loadSkLaeufe(); return; }
   if(e.target.closest("a,button,details,summary")){ /* Buttons unten */ }
   else { const t=e.target.closest("[data-sktoggle]"); if(t){ const id=t.dataset.sktoggle; skOffen.has(id)?skOffen.delete(id):skOffen.add(id); renderSkLaeufe(); return; } }
-  const cp=e.target.closest("[data-skcopy]"); if(cp){
-    const j=await fetch("/api/skills/laeufe/"+cp.dataset.skcopy+"/export").then(r=>r.text());
-    try{ await navigator.clipboard.writeText(j); cp.textContent="Kopiert ✓"; }catch(x){ alert("Kopieren nicht möglich – bitte „Log exportieren“ nutzen."); }
-    setTimeout(()=>{ cp.textContent="Kopieren"; },1500);
-  }
+  const cp=e.target.closest("[data-skcopy]"); if(cp){ skLogKopieren(cp); }
 });
+// Log kopieren: Clipboard innerhalb der Nutzer-Geste (ClipboardItem mit Promise), sonst Dialog zum manuellen Kopieren.
+async function skLogKopieren(btn){
+  const url="/api/skills/laeufe/"+btn.dataset.skcopy+"/export";
+  const ok=()=>{ btn.textContent="Kopiert ✓"; setTimeout(()=>{ btn.textContent="Log kopieren"; },1600); };
+  const hole=()=>fetch(url).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); });
+  try{
+    if(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write){
+      const item=new ClipboardItem({"text/plain": hole().then(t=>new Blob([t],{type:"text/plain"}))});
+      await navigator.clipboard.write([item]); ok(); return;
+    }
+  }catch(x){}
+  let text=""; try{ text=await hole(); }catch(x){ alert("Log konnte nicht geladen werden."); return; }
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); ok(); return; } }catch(x){}
+  // Fallback: Dialog mit vorselektiertem Text (Cmd/Ctrl+C).
+  let dlg=$("skLogDialog");
+  if(!dlg){ dlg=document.createElement("dialog"); dlg.id="skLogDialog"; dlg.className="sk-dialog";
+    dlg.innerHTML='<div class="sk-dialog-kopf"><b>Log kopieren</b><span>Text ist markiert – mit Cmd/Ctrl + C kopieren.</span><button class="sk-btn" id="skLogDialogZu">Schließen</button></div><textarea id="skLogDialogText" readonly spellcheck="false"></textarea>';
+    document.body.appendChild(dlg); $("skLogDialogZu").addEventListener("click",()=>dlg.close()); }
+  $("skLogDialogText").value=text; dlg.showModal(); const ta=$("skLogDialogText"); ta.focus(); ta.select();
+  try{ if(document.execCommand("copy")) ok(); }catch(x){}
+}
 $("skCanvas").addEventListener("load",skMarkiere);
 // Klick auf einen Skill-Knoten im Canvas wechselt zu diesem Skill.
 window.addEventListener("message",e=>{ if(e.data&&e.data.typ==="skill-oeffnen"&&SK_FLOWS.some(f=>f.id===e.data.id)){ skAktiv=e.data.id; skTab="ueberblick"; renderSkills(); loadSkLaeufe(); } });
