@@ -1212,6 +1212,8 @@ const routen = {
     "/api/skills": nurTeam(async () => Response.json(skills.catalog())),
     "/api/skills/laeufe": nurTeam(async (req, ich) =>
       Response.json(await skills.runs(ich, hatCap(ich, "team.admin"), new URL(req.url).searchParams.get("flow")))),
+    "/api/skills/pending": nurTeam(async (req, ich) =>
+      Response.json(await skills.pending(ich, new URL(req.url).searchParams.get("raum") ?? ""))),
     "/api/skills/laeufe/:id": {
       DELETE: nurTeam(async (req, ich) =>
         (await skills.cancel(req.params.id, ich, hatCap(ich, "team.admin")))

@@ -12,7 +12,7 @@ const BASIS = process.env.PHALA_BASE_URL ?? "https://inference.phala.com/v1";
 const MODELL = process.env.KI_MODELL ?? "qwen/qwen3.8-27b";
 const KEY = process.env.PHALA_API_KEY;
 export const aktiv = !!KEY;
-console.log(aktiv ? `🤖 KI im Chat an – ${MODELL} über ${BASIS}` : "🤖 KI im Chat aus – PHALA_API_KEY fehlt (.env)");
+console.log(aktiv ? `KI im Chat an – ${MODELL} über ${BASIS}` : "KI im Chat aus – PHALA_API_KEY fehlt (.env)");
 
 /** Einmaliger, nicht gestreamter Aufruf – für Skill-Actors. */
 export async function kiText(system: string, user: string, opt: { json?: boolean } = {}): Promise<string> {
@@ -49,7 +49,7 @@ function systemPrompt(raumTitel: string) {
     `auf Deutsch, außer die Nachricht ist in einer anderen Sprache. Du hilfst dem Team bei Fragen zu Service,`,
     `Küche, Abläufen, Formulierungen, Übersetzungen, Rechnen und Planung. Nachrichten anderer sind mit`,
     `„Name: Text“ markiert; sprich Leute mit Vornamen an. Keine Markdown-Überschriften, höchstens ein paar Sätze.`,
-    `Nur bei reinen Bestätigungen ohne Inhalt (z. B. „ok“, „danke“, „👍“) antwortest du exakt mit ${STUMM}.`,
+    `Verwende keine Emojis. Nur bei reinen Bestätigungen ohne Inhalt (z. B. „ok“, „danke“, ein Daumen hoch) antwortest du exakt mit ${STUMM}.`,
   ].join(" ");
 }
 

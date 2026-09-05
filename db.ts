@@ -527,6 +527,10 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
     id: "023-intent-router",
     sql: /* sql */ `UPDATE skill_laeufe SET flow = 'intent-router' WHERE flow = 'router';`,
   },
+  {
+    id: "024-hitl",
+    sql: /* sql */ `UPDATE skill_laeufe SET flow = 'hitl' WHERE flow = 'confirm';`,
+  },
 ];
 
 async function migrieren() {

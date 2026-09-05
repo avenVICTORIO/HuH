@@ -23,11 +23,11 @@ import {
 } from "./types";
 
 import router from "./intent-router/flow";
-import confirm from "./confirm/flow";
+import hitl from "./hitl/flow";
 import logTime from "./log-time/flow";
 
 /** Every flow folder registers here. */
-export const FLOWS: Flow[] = [router, confirm, logTime];
+export const FLOWS: Flow[] = [router, hitl, logTime];
 export const ROUTER_ID = router.id;
 
 const flowById = (id: string) => FLOWS.find((f) => f.id === id);
@@ -243,7 +243,7 @@ async function step(runId: string, actor: string, kind: string, input: unknown, 
 
 /** The flow speaks in chat as the assistant – with a flow prefix (system flows and components without). */
 async function say(room: string, flow: Flow, text: string) {
-  const prefix = flow.system || flow.component ? "" : `⚙️ ${flow.name}\n`;
+  const prefix = flow.system || flow.component ? "" : `${flow.name}\n`;
   await chat.kiNachricht(room, prefix + text, randomUUID());
 }
 
@@ -332,6 +332,31 @@ export async function runs(person: Mitarbeiter, seeAll: boolean, flowId: string 
       actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), ts: Number(s.ts), output: parse(s.ausgabe),
     })),
   }));
+}
+
+/**
+ * What the chat input should show for this person in this room: the pending human step
+ * (HITL question with options) or a plain pending `ask` of any flow – or null.
+ */
+export async function pending(person: Mitarbeiter, room: string) {
+  const run = await eins<Run>(
+    "SELECT * FROM skill_laeufe WHERE mitarbeiter_id = ? AND raum = ? AND status = 'waiting' ORDER BY aktualisiert DESC LIMIT 1",
+    person.id, room,
+  );
+  if (!run) return null;
+  const flow = flowById(run.flow);
+  let state: State = {}; try { state = JSON.parse(run.zustand || "{}"); } catch {}
+  const isHitl = run.flow === hitl.id;
+  // Name shown in the bar: for a component, the parent flow is the meaningful one.
+  let label = flow?.name ?? run.flow;
+  if (run.eltern_id) { const p = await eins<Run>("SELECT flow FROM skill_laeufe WHERE id = ?", run.eltern_id); label = flowById(p?.flow ?? "")?.name ?? label; }
+  return {
+    runId: run.id, flow: run.flow, label,
+    question: isHitl ? String(state.question ?? "") : null,
+    options: isHitl && Array.isArray(state.options) ? state.options : [],
+    allowText: isHitl ? state.allowText !== false : true,
+    since: Number(run.aktualisiert),
+  };
 }
 
 /** Cancel a run (children too); a cancelled child reports back to its parent. */
