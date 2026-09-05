@@ -3,10 +3,10 @@
   let { data }: { data: any } = $props();
 </script>
 
-<div class="actor {data.art} {data.aktiv ? 'aktiv ' + (data.status ?? '') : ''}">
+<div class="actor {data.art} {data.verweis ? 'verweis' : ''} {data.aktiv ? 'aktiv ' + (data.status ?? '') : ''}">
   <Handle type="target" position={Position.Left} />
   <div class="kopf">
-    <span class="art">{data.art === "ki" ? "✦ KI-Actor" : "ƒ JS-Actor"}</span>
+    <span class="art">{data.verweis ? "⧉ Sub-Flow" : data.art === "ki" ? "✦ KI-Actor" : "ƒ JS-Actor"}</span>
     {#if data.start}<span class="start">Start</span>{/if}
     {#if data.aktiv}<span class="puls" title={data.status}></span>{/if}
   </div>
@@ -19,6 +19,8 @@
 <style>
   .actor { width: 230px; background: #FBF8F2; border: 1.5px solid #E3DBCB; border-radius: 16px; padding: 12px 14px 12px; box-shadow: 0 8px 24px -18px rgba(34,38,31,.5); font-family: Montserrat, system-ui, sans-serif; color: #2B2A26; }
   .actor.ki { border-color: #D9B48F; background: #FBF5EA; }
+  .actor.verweis { border-style: dashed; border-color: #6C7F68; background: #EEF2EC; }
+  .verweis .art { color: #3C4A3B; }
   .actor.aktiv { border-color: #3C4A3B; box-shadow: 0 0 0 4px rgba(60,74,59,.14); }
   .actor.aktiv.wartet { border-color: #B0553A; box-shadow: 0 0 0 4px rgba(176,85,58,.16); }
   .kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }

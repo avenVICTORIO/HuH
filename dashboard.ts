@@ -253,6 +253,11 @@ ${baseCss}
   .sk-schritt.frage{border-color:var(--amber);} .sk-schritt.fertig{border-color:var(--wald-hell);} .sk-schritt.fehler,.sk-schritt.abbruch{border-color:#E5C4BB;}
   .sk-pfeil{color:var(--grey);}
   .tag.offen{background:#FBEFD9; color:#8a5a1a;}
+  .sk-badge{display:inline-block; margin-left:8px; vertical-align:middle; font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; border-radius:999px; padding:2px 8px; font-family:var(--sans);}
+  .sk-badge.system{background:var(--creme); color:var(--clay); border:1px solid var(--line);}
+  .sk-badge.baustein{background:#EEF2EC; color:var(--wald); border:1px solid var(--wald-hell);}
+  .sk-note{font-size:12.5px; color:var(--grey); font-style:italic; align-self:center;}
+  .sk-lauf.sk-kind{margin-left:22px; border-style:dashed;}
 
   /* ---- Rollen-Katalog ---- */
   .rollen-chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
@@ -1211,24 +1216,27 @@ async function loadSkills(){
   renderSkills(); await loadSkLaeufe();
 }
 function renderSkills(){
+  const badge=f=>f.system?'<span class="sk-badge system">System</span>':f.baustein?'<span class="sk-badge baustein">Baustein</span>':'';
   $("skListe").innerHTML=SK_FLOWS.map(f=>'<button class="sk-karte'+(f.id===skAktiv?" aktiv":"")+'" data-sk="'+f.id+'">'+
-    '<div class="sk-k-name">'+esc(f.name)+'</div><div class="sk-k-besch">'+esc(f.beschreibung)+'</div>'+
-    '<div class="sk-k-meta">'+f.actors.length+' Actors · '+f.actors.filter(a=>a.art==="ki").length+'× KI</div></button>').join("")||'<div class="empty">Noch keine Skills</div>';
+    '<div class="sk-k-name">'+esc(f.name)+badge(f)+'</div><div class="sk-k-besch">'+esc(f.beschreibung)+'</div>'+
+    '<div class="sk-k-meta">'+f.actors.length+' Actor'+(f.actors.length===1?"":"s")+' · '+f.actors.filter(a=>a.art==="ki").length+'× KI'+(f.verweise&&f.verweise.length?' · ruft '+f.verweise.map(v=>esc(v.name)).join(", "):'')+'</div></button>').join("")||'<div class="empty">Noch keine Skills</div>';
   const f=SK_FLOWS.find(x=>x.id===skAktiv), d=$("skDetail");
   if(!f){ d.style.display="none"; return; }
   d.style.display="";
-  $("skTitel").textContent=f.name; $("skBesch").textContent=f.beschreibung;
-  $("skBeispiele").innerHTML=f.beispiele.map(b=>'<button class="sk-bsp" data-skbsp="'+esc(b)+'">„'+esc(b)+'“</button>').join("");
+  $("skTitel").innerHTML=esc(f.name)+badge(f); $("skBesch").textContent=f.beschreibung;
+  $("skStart").style.display=(f.system||f.baustein)?"none":"";
+  $("skBeispiele").innerHTML=f.beispiele.map(b=>'<button class="sk-bsp" data-skbsp="'+esc(b)+'">„'+esc(b)+'“</button>').join("")
+    +(f.system?'<span class="sk-note">Läuft automatisch für jede Chat-Nachricht.</span>':f.baustein?'<span class="sk-note">Wird von anderen Skills gerufen, nicht direkt gestartet.</span>':'');
   const src="/skills-canvas?flow="+encodeURIComponent(f.id);
   if($("skCanvas").getAttribute("src")!==src) $("skCanvas").setAttribute("src",src); else skMarkiere();
 }
-async function loadSkLaeufe(){ SK_LAEUFE=await fetch("/api/skills/laeufe").then(x=>x.json()); renderSkLaeufe(); skMarkiere(); }
-const SK_STATUS={laeuft:["Läuft","in"],wartet:["Wartet auf Antwort","offen"],fertig:["Fertig","in"],abgebrochen:["Abgebrochen","out"],fehler:["Fehler","out"]};
+async function loadSkLaeufe(){ SK_LAEUFE=await fetch("/api/skills/laeufe"+(skAktiv?"?flow="+encodeURIComponent(skAktiv):"")).then(x=>x.json()); renderSkLaeufe(); skMarkiere(); }
+const SK_STATUS={laeuft:["Läuft","in"],wartet:["Wartet auf Antwort","offen"],kind:["Wartet auf Baustein","offen"],fertig:["Fertig","in"],abgebrochen:["Abgebrochen","out"],fehler:["Fehler","out"]};
 function renderSkLaeufe(){
   const liste=SK_LAEUFE.filter(l=>!skAktiv||l.flow===skAktiv);
   $("skLaeufe").innerHTML=liste.length?liste.map(l=>{
     const f=SK_FLOWS.find(x=>x.id===l.flow), st=SK_STATUS[l.status]||[l.status,""];
-    return '<div class="card sk-lauf"><div class="sk-lauf-kopf"><b>'+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
+    return '<div class="card sk-lauf'+(l.eltern_id?" sk-kind":"")+'"><div class="sk-lauf-kopf"><b>'+(l.eltern_id?'↳ ':'')+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
       '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.erstellt).toISOString().slice(0,10))+' '+hm(l.erstellt)+'</small>'+
       ((l.status==="laeuft"||l.status==="wartet")?'<button class="iconbtn del" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</div>'+
       '<div class="sk-schritte">'+l.schritte.map(s=>{ const a=f&&f.actors.find(x=>x.id===s.actor);
@@ -1240,7 +1248,7 @@ function skMarkiere(){
   const l=SK_LAEUFE.find(x=>x.flow===skAktiv), fr=$("skCanvas");
   if(fr&&fr.contentWindow) fr.contentWindow.postMessage({typ:"markiere",actor:l&&(l.status==="laeuft"||l.status==="wartet")?l.aktueller_actor:null,status:l?l.status:null},"*");
 }
-$("skListe").addEventListener("click",e=>{ const b=e.target.closest("[data-sk]"); if(b){ skAktiv=b.dataset.sk; renderSkills(); renderSkLaeufe(); } });
+$("skListe").addEventListener("click",e=>{ const b=e.target.closest("[data-sk]"); if(b){ skAktiv=b.dataset.sk; renderSkills(); loadSkLaeufe(); } });
 $("skDetail").addEventListener("click",async e=>{
   const bsp=e.target.closest("[data-skbsp]");
   if(!bsp&&e.target.id!=="skStart") return;
