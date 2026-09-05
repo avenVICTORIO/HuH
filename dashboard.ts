@@ -234,6 +234,48 @@ ${baseCss}
   .edit-zeile .weg{border:none; background:var(--creme); border-radius:50%; width:22px; height:22px;
     cursor:pointer; color:var(--rot); font-size:13px; display:grid; place-items:center;}
 
+  /* ---- Chat ---- */
+  .tab-badge{display:inline-block; min-width:18px; margin-left:8px; padding:1px 6px; border-radius:999px; background:var(--amber); color:#fff; font-size:11px; font-weight:700; text-align:center; vertical-align:middle;}
+  .chat-rahmen{display:grid; grid-template-columns:270px minmax(0,1fr); gap:12px; height:calc(100vh - 110px); min-height:440px; margin-top:12px;}
+  .chat-raeume{background:var(--card); border:1px solid var(--line); border-radius:16px; overflow-y:auto; padding:8px;}
+  .chat-raum{display:block; width:100%; text-align:left; background:none; border:none; border-radius:12px; padding:11px 12px; cursor:pointer; font-family:var(--sans); color:var(--ink);}
+  .chat-raum:hover{background:var(--creme);} .chat-raum.aktiv{background:var(--creme); box-shadow:inset 3px 0 0 var(--wald);}
+  .cr-kopf{display:flex; align-items:center; gap:8px;}
+  .cr-titel{font-family:var(--serif); font-size:17px; color:var(--wald); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .cr-badge{min-width:20px; padding:2px 7px; border-radius:999px; background:var(--amber); color:#fff; font-size:11px; font-weight:700; text-align:center;}
+  .cr-unter{font-size:12.5px; color:var(--grey); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .chat-raum.aktiv .cr-unter, .chat-raum.ungelesen .cr-unter{color:var(--clay);}
+  .chat-raum.ungelesen .cr-unter{font-weight:600;}
+  .chat-fenster{display:flex; flex-direction:column; min-height:0; background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden;}
+  .chat-kopf{display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--card);}
+  .chat-zurueck{display:none; background:none; border:1px solid var(--line); border-radius:10px; width:34px; height:34px; font-size:20px; cursor:pointer; color:var(--wald); line-height:1;}
+  .chat-titel{font-family:var(--serif); font-size:20px; color:var(--wald); line-height:1.15;}
+  .chat-unter{font-size:12px; color:var(--grey);}
+  .chat-verlauf{flex:1; min-height:0; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:6px; background:var(--creme);}
+  .chat-tag{display:flex; align-items:center; gap:10px; margin:10px 0 6px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--grey);}
+  .chat-tag::before, .chat-tag::after{content:""; flex:1; height:1px; background:var(--line);}
+  .msg{max-width:min(72%,560px); padding:9px 13px 10px; border-radius:16px 16px 16px 4px; background:var(--card); border:1px solid var(--line); align-self:flex-start; box-shadow:0 1px 2px rgba(34,38,31,.04);}
+  .msg.eigene{align-self:flex-end; border-radius:16px 16px 4px 16px; background:var(--wald); border-color:var(--wald); color:#fff;}
+  .msg-meta{font-size:11px; color:var(--grey); margin-bottom:3px; display:flex; align-items:center; gap:6px;}
+  .msg.eigene .msg-meta{color:rgba(255,255,255,.72);}
+  .msg-meta b{color:var(--wald); font-weight:600;} .msg.eigene .msg-meta b{color:#fff;}
+  .msg-text{font-size:15px; line-height:1.45; white-space:pre-wrap; word-break:break-word;}
+  .msg-del{margin-left:auto; background:none; border:none; color:inherit; opacity:.45; cursor:pointer; font-size:14px; line-height:1; padding:0 2px;}
+  .msg:hover .msg-del{opacity:.9;}
+  .chat-eingabe{display:flex; gap:10px; align-items:flex-end; padding:12px; border-top:1px solid var(--line); background:var(--card);}
+  .chat-eingabe textarea{flex:1; resize:none; max-height:140px; padding:11px 14px; border:1px solid var(--line); border-radius:14px; font-family:var(--sans); font-size:15px; background:var(--creme); color:var(--ink); line-height:1.4;}
+  .chat-eingabe textarea:focus{outline:none; border-color:var(--wald-hell);}
+  .chat-senden{width:46px; height:46px; border:none; border-radius:14px; background:var(--wald); color:#fff; font-size:18px; cursor:pointer; flex:none;}
+  .chat-senden:disabled{opacity:.5;}
+  @media (max-width:880px){
+    .chat-rahmen{display:block; height:calc(100vh - 130px);}
+    .chat-raeume, .chat-fenster{height:100%;}
+    .chat-rahmen .chat-fenster{display:none;} .chat-rahmen.offen .chat-fenster{display:flex;}
+    .chat-rahmen.offen .chat-raeume{display:none;}
+    .chat-zurueck{display:inline-flex; align-items:center; justify-content:center;}
+    .msg{max-width:86%;}
+  }
+
   /* ---- Rollen-Katalog ---- */
   .rollen-chips{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
   .rolle-karte{margin-bottom:12px;}
@@ -300,6 +342,7 @@ ${baseCss}
   <div class="tab" data-v="reservierungen">Reservierungen</div>
   <div class="tab" data-v="meine-schichten">Meine Schichten</div>
   <div class="tab" data-v="meine-zeiten">Meine Zeiten</div>
+  <div class="tab" data-v="chat">Chat<span class="tab-badge" id="chatTabBadge" style="display:none"></span></div>
   <div class="tab" data-v="karte">Karte</div>
   <div class="tab" data-v="schichtplan">Schichtplan</div>
   <div class="tab" data-v="auswertung">Auswertung</div>
@@ -442,6 +485,27 @@ ${baseCss}
     </div>
   </section>
 
+  <!-- ===== VIEW: CHAT (Team-Raum + Direkt-Chats) ===== -->
+  <section class="view" id="v-chat">
+    <div class="chat-rahmen" id="chatRahmen">
+      <aside class="chat-raeume" id="chatRaeume"><div class="empty">lädt …</div></aside>
+      <div class="chat-fenster">
+        <div class="chat-kopf">
+          <button class="chat-zurueck" id="chatZurueck" title="Zur Chat-Liste">‹</button>
+          <div class="chat-kopf-text">
+            <div class="chat-titel" id="chatTitel">Chat</div>
+            <div class="chat-unter" id="chatUnter"></div>
+          </div>
+        </div>
+        <div class="chat-verlauf" id="chatVerlauf"><div class="empty">Wähle links einen Chat.</div></div>
+        <form class="chat-eingabe" id="chatForm" autocomplete="off">
+          <textarea id="chatText" rows="1" maxlength="2000" placeholder="Nachricht schreiben … (Enter sendet, Shift+Enter neue Zeile)"></textarea>
+          <button type="submit" class="chat-senden" id="chatSendenBtn" title="Senden">➤</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== -->
   <section class="view" id="v-meine-schichten">
     <div class="sec-title">Meine Schichten</div>
@@ -563,11 +627,12 @@ function aktiviere(v){
   // Jeder Bereich hat seine eigene Adresse: /app/<bereich>
   if(location.pathname!=="/app/"+v) history.pushState(null,"","/app/"+v);
   // Titel neben dem Logo = aktueller Bereich (Name wie im Tab).
-  { const t=document.querySelector('.tab[data-v="'+v+'"]'); if(t) $("ttl").textContent=t.textContent.trim(); }
+  { const t=document.querySelector('.tab[data-v="'+v+'"]'); if(t) $("ttl").textContent=(t.firstChild?t.firstChild.textContent:t.textContent).trim(); }
   if(v==="heute") loadHeute();
   if(v==="reservierungen") loadRes();
   if(v==="meine-schichten") loadMs();
   if(v==="meine-zeiten") loadMz();
+  if(v==="chat") loadChat(); else chatStopp();
   if(v==="karte") loadKarte();
   if(v==="schichtplan") loadSp();
   if(v==="auswertung") loadReport();
@@ -578,9 +643,9 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>akti
 
 // Tabs folgen den Fähigkeiten der Rolle; Basis-Tabs (Meine Schichten/Zeiten) hat jeder.
 const TAB_CAPS={heute:"auswertung",reservierungen:"reservierungen",schichtplan:"schichtplan",
-  "meine-schichten":"","meine-zeiten":"",karte:"karte.admin",
+  "meine-schichten":"","meine-zeiten":"",chat:"",karte:"karte.admin",
   auswertung:"auswertung",ablaeufe:"ablaeufe.admin",team:"team.admin"};
-const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","karte","auswertung","ablaeufe","team"];
+const TAB_REIHE=["heute","reservierungen","schichtplan","meine-schichten","meine-zeiten","chat","karte","auswertung","ablaeufe","team"];
 const erlaubteTabs=()=>TAB_REIHE.filter(v=>!TAB_CAPS[v]||cap(TAB_CAPS[v]));
 
 function starte(){
@@ -589,6 +654,7 @@ function starte(){
   document.querySelectorAll(".tab").forEach(t=>{ t.style.display=erlaubt.includes(t.dataset.v)?"":"none"; });
   const wunsch=bereichAusPfad();
   aktiviere(erlaubt.includes(wunsch)?wunsch:erlaubt[0]);
+  chatBadge(); if(!chatBadgeTimer) chatBadgeTimer=setInterval(chatBadge,20000);
 }
 // Bereich aus der Adresse: /app/<bereich> (alte #-Anker werden noch verstanden).
 function bereichAusPfad(){ return (location.pathname.split("/")[2]||location.hash.replace("#","")||""); }
@@ -1126,6 +1192,110 @@ $("btnKtGruppe").addEventListener("click",async ()=>{
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   $("ktNeuTitel").value=""; $("ktNeuSpalten").value="";
   loadKarte();
+});
+
+/* ===== VIEW: CHAT (Raum „Team“ + Direkt-Chats; Polling alle 4 s) ===== */
+let chatRaeume=[], chatAktiv=null, chatNachrichten=[], chatLetzteTs=0, chatTimer=null, chatBadgeTimer=null, chatPollN=0, chatScrollErzwingen=false;
+
+async function loadChat(){
+  await chatLadeRaeume();
+  // Am Desktop direkt den ersten Raum (Team) öffnen; am Handy erst die Liste zeigen.
+  if(!chatAktiv && chatRaeume.length && window.innerWidth>880) await chatOeffne(chatRaeume[0].id);
+  chatStopp(); chatTimer=setInterval(chatPoll,4000);
+}
+function chatStopp(){ if(chatTimer){ clearInterval(chatTimer); chatTimer=null; } }
+
+async function chatLadeRaeume(){
+  const r=await fetch("/api/chat/raeume"); if(!r.ok) return;
+  chatRaeume=await r.json(); renderChatRaeume(); chatBadgeSetzen(chatRaeume.reduce((s,x)=>s+x.ungelesen,0));
+}
+function renderChatRaeume(){
+  $("chatRaeume").innerHTML=chatRaeume.map(r=>{
+    const vorschau=r.letzte?((r.letzte.eigene?"Du: ":"")+r.letzte.text.replace(/\\s+/g," ")):(r.untertitel||"");
+    return '<button class="chat-raum'+(r.id===chatAktiv?" aktiv":"")+(r.ungelesen?" ungelesen":"")+'" data-raum="'+r.id+'">'+
+      '<div class="cr-kopf"><span class="cr-titel">'+esc(r.titel)+'</span>'+(r.ungelesen?'<span class="cr-badge">'+r.ungelesen+'</span>':'')+'</div>'+
+      '<div class="cr-unter">'+esc(vorschau)+'</div></button>';
+  }).join("")||'<div class="empty">Keine Chats</div>';
+}
+async function chatOeffne(id){
+  chatAktiv=id; chatNachrichten=[]; chatLetzteTs=0; chatScrollErzwingen=true;
+  $("chatRahmen").classList.add("offen");
+  const r=chatRaeume.find(x=>x.id===id);
+  $("chatTitel").textContent=r?r.titel:"Chat"; $("chatUnter").textContent=r?(r.untertitel||""):"";
+  renderChatRaeume();
+  await chatHole(true);
+  const raum=chatRaeume.find(x=>x.id===id); if(raum&&raum.ungelesen){ raum.ungelesen=0; renderChatRaeume(); chatBadgeSetzen(chatRaeume.reduce((s,x)=>s+x.ungelesen,0)); }
+  if(window.innerWidth>880) $("chatText").focus();
+}
+async function chatHole(voll){
+  if(!chatAktiv) return;
+  const raum=chatAktiv;
+  const r=await fetch("/api/chat/raum/"+encodeURIComponent(raum)+(voll?"":"?seit="+chatLetzteTs));
+  if(!r.ok||raum!==chatAktiv) return;
+  const d=await r.json();
+  let neu=false;
+  if(voll){ chatNachrichten=d.nachrichten; neu=true; }
+  else if(d.nachrichten.length){
+    const ids=new Set(chatNachrichten.map(n=>n.id));
+    const frisch=d.nachrichten.filter(n=>!ids.has(n.id));
+    if(frisch.length){ chatNachrichten.push(...frisch); neu=true; }
+  }
+  if(chatNachrichten.length) chatLetzteTs=Math.max(chatLetzteTs,...chatNachrichten.map(n=>n.ts));
+  if(neu) renderChatVerlauf();
+}
+function chatTagLabel(d){
+  const h=new Date(), g=new Date(); g.setDate(h.getDate()-1);
+  if(d.toDateString()===h.toDateString()) return "Heute";
+  if(d.toDateString()===g.toDateString()) return "Gestern";
+  return ["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()]+", "+d.getDate()+". "+MON[d.getMonth()]+(d.getFullYear()!==h.getFullYear()?" "+d.getFullYear():"");
+}
+function renderChatVerlauf(){
+  const v=$("chatVerlauf");
+  const amEnde=v.scrollHeight-v.scrollTop-v.clientHeight<90;
+  if(!chatNachrichten.length){ v.innerHTML='<div class="empty">Noch keine Nachrichten – schreib die erste.</div>'; return; }
+  let html="", tag=null;
+  for(const n of chatNachrichten){
+    const d=new Date(n.ts);
+    if(d.toDateString()!==tag){ tag=d.toDateString(); html+='<div class="chat-tag"><span>'+chatTagLabel(d)+'</span></div>'; }
+    const darfWeg=n.eigene||cap("chat.admin");
+    html+='<div class="msg'+(n.eigene?" eigene":"")+'" data-mid="'+n.id+'">'+
+      '<div class="msg-meta"><b>'+(n.eigene?"Du":esc(n.von_name))+'</b><span>'+hm(n.ts)+'</span>'+
+        (darfWeg?'<button class="msg-del" data-del="'+n.id+'" title="Nachricht löschen">×</button>':'')+'</div>'+
+      '<div class="msg-text">'+esc(n.text)+'</div></div>';
+  }
+  v.innerHTML=html;
+  if(amEnde||chatScrollErzwingen){ v.scrollTop=v.scrollHeight; chatScrollErzwingen=false; }
+}
+async function chatSenden(){
+  const ta=$("chatText"); const text=ta.value.trim(); if(!text||!chatAktiv) return;
+  ta.value=""; ta.style.height=""; chatScrollErzwingen=true; $("chatSendenBtn").disabled=true;
+  try{
+    const r=await fetch("/api/chat/raum/"+encodeURIComponent(chatAktiv),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+    if(!r.ok){ ta.value=text; alert((await r.json()).fehler||"Senden fehlgeschlagen."); return; }
+    const n=await r.json(); chatNachrichten.push(n); chatLetzteTs=Math.max(chatLetzteTs,n.ts); renderChatVerlauf();
+    chatLadeRaeume();
+  }finally{ $("chatSendenBtn").disabled=false; ta.focus(); }
+}
+async function chatPoll(){
+  if(!$("v-chat").classList.contains("active")){ chatStopp(); return; }
+  chatPollN++;
+  await chatHole(chatPollN%10===0); // alle 40 s einmal komplett (fängt Löschungen anderer ein)
+  chatLadeRaeume();
+}
+// Ungelesen-Zähler am Tab – läuft auch außerhalb des Chat-Bereichs (alle 20 s).
+function chatBadgeSetzen(n){ const b=$("chatTabBadge"); if(!b) return; b.textContent=n>99?"99+":String(n); b.style.display=n>0?"":"none"; }
+async function chatBadge(){ try{ const d=await fetch("/api/chat/ungelesen").then(r=>r.ok?r.json():null); if(d) chatBadgeSetzen(d.ungelesen); }catch(e){} }
+
+$("chatRaeume").addEventListener("click",e=>{ const b=e.target.closest("[data-raum]"); if(b) chatOeffne(b.dataset.raum); });
+$("chatZurueck").addEventListener("click",()=>{ $("chatRahmen").classList.remove("offen"); chatAktiv=null; renderChatRaeume(); });
+$("chatForm").addEventListener("submit",e=>{ e.preventDefault(); chatSenden(); });
+$("chatText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); chatSenden(); } });
+$("chatText").addEventListener("input",e=>{ const t=e.target; t.style.height="auto"; t.style.height=Math.min(140,t.scrollHeight)+"px"; });
+$("chatVerlauf").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-del]"); if(!b) return;
+  if(!confirm("Nachricht löschen?")) return;
+  const r=await fetch("/api/chat/nachricht/"+b.dataset.del,{method:"DELETE"});
+  if(r.ok){ chatNachrichten=chatNachrichten.filter(n=>n.id!==b.dataset.del); renderChatVerlauf(); chatLadeRaeume(); }
 });
 
 /* ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== */

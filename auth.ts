@@ -60,6 +60,7 @@ export const CAPABILITIES: Record<string, string> = {
   auswertung: "Auswertung & Live-Ansicht",
   "ablaeufe.admin": "Abläufe-Katalog pflegen",
   "team.admin": "Team, Rollen & Einladungen verwalten",
+  "chat.admin": "Alle Mitarbeiter-Chats lesen & schreiben",
 };
 
 export const hatCap = (m: Mitarbeiter | null, cap: string): boolean =>
