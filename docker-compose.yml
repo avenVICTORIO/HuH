@@ -2,9 +2,12 @@
 #   app – Bun: Website + Team-App + API + WebSockets (ein Prozess, ein Port)
 #   db  – echtes Postgres 16 (statt PGlite), Daten im Volume `pgdata`
 # Werte kommen aus .env (siehe .env.example).
+name: aven-victorio
+
 services:
   db:
     image: postgres:16-alpine
+    container_name: aven-victorio-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-huh}
@@ -23,7 +26,8 @@ services:
 
   app:
     build: .
-    image: ${APP_IMAGE:-huh-app:local}
+    image: ${APP_IMAGE:-aven-victorio:local}
+    container_name: aven-victorio-app
     restart: unless-stopped
     depends_on:
       db:
