@@ -21,6 +21,8 @@ const actor: Actor = {
   description: "Vergleicht die Nachricht mit Beschreibung und Beispielen aller Skills und übergibt bei klarer Absicht an den passenden Flow.",
   pos: { x: 40, y: 120 },
   output: { type: "object", properties: { verdict: VERDICT } },
+  // Kann an jeden startbaren Skill übergeben – der Katalog zeichnet dafür die Handoff-Knoten.
+  delegates: [{ via: "handoff", to: "startable" }],
   async handle(message, ctx) {
     if (message.kind !== "start" || !ctx.ai.active || !ctx.flows.length) return { done: "" };
     const catalog = ctx.flows

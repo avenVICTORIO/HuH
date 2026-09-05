@@ -523,6 +523,10 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
           WHEN 'fragen' THEN 'ask' WHEN 'erkennen' THEN 'detect' ELSE actor END;
     `,
   },
+  {
+    id: "023-intent-router",
+    sql: /* sql */ `UPDATE skill_laeufe SET flow = 'intent-router' WHERE flow = 'router';`,
+  },
 ];
 
 async function migrieren() {

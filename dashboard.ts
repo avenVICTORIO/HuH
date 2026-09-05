@@ -1261,10 +1261,12 @@ function renderSkills(){
 // JSON-Schema-Verträge der Actors (und des Flows) als kompakte Karten.
 function renderSkSchemas(f){
   const felder=s=>s&&s.properties?Object.keys(s.properties).map(k=>'<code>'+esc(k)+((s.required||[]).includes(k)?'*':'')+'</code>').join(""):'<code>–</code>';
-  const karte=(titel,art,inp,out)=>'<div class="sk-schema"><b>'+esc(titel)+'</b>'+(art?'<span style="font-size:10.5px; letter-spacing:.08em; text-transform:uppercase">'+art+'</span>':'')+
-    '<span class="io"><span>in</span>'+felder(inp)+'</span><span class="io"><span>out</span>'+felder(out)+'</span></div>';
+  const name=id=>(SK_FLOWS.find(x=>x.id===id)||{}).name||id;
+  const karte=(titel,art,inp,out,deleg)=>'<div class="sk-schema"><b>'+esc(titel)+'</b>'+(art?'<span style="font-size:10.5px; letter-spacing:.08em; text-transform:uppercase">'+art+'</span>':'')+
+    '<span class="io"><span>in</span>'+felder(inp)+'</span><span class="io"><span>out</span>'+felder(out)+'</span>'+
+    (deleg&&deleg.length?deleg.map(d=>'<span class="io"><span>'+d.via+'</span>'+d.to.map(t=>'<code>'+esc(name(t))+'</code>').join("")+'</span>').join(""):'')+'</div>';
   $("skSchemas").innerHTML=(f.input||f.output?karte("Flow „"+f.name+"“","Vertrag für call",f.input,f.output):"")+
-    f.actors.map(a=>karte(a.name,a.kind==="ai"?"KI-Actor":"JS-Actor",a.input,a.output)).join("");
+    f.actors.map(a=>karte(a.name,a.kind==="ai"?"KI-Actor":"JS-Actor",a.input,a.output,a.delegates)).join("");
 }
 function skTabZeigen(){
   document.querySelectorAll("[data-sktab]").forEach(t=>t.classList.toggle("active",t.dataset.sktab===skTab));
@@ -1303,6 +1305,8 @@ $("skMain").addEventListener("click",async e=>{
 });
 $("skLaeufe").addEventListener("click",async e=>{ const b=e.target.closest("[data-skabbruch]"); if(!b) return; await fetch("/api/skills/laeufe/"+b.dataset.skabbruch,{method:"DELETE"}); loadSkLaeufe(); });
 $("skCanvas").addEventListener("load",skMarkiere);
+// Klick auf einen Skill-Knoten im Canvas wechselt zu diesem Skill.
+window.addEventListener("message",e=>{ if(e.data&&e.data.typ==="skill-oeffnen"&&SK_FLOWS.some(f=>f.id===e.data.id)){ skAktiv=e.data.id; skTab="graph"; renderSkills(); loadSkLaeufe(); } });
 
 /* ===== VIEW: MEINE SCHICHTEN (Mitarbeiter, lesend) ===== */
 async function loadMs(){
