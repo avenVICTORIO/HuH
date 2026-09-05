@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    name: Build & Smoke (echtes Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: huh
+          POSTGRES_USER: huh
+          POSTGRES_PASSWORD: huh
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U huh -d huh"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+      - name: Abhängigkeiten
+        run: bun install --frozen-lockfile
+      - name: Bundle-Check (Syntax/Imports)
+        run: bun build index.ts --target=bun --outdir /tmp/build
+      - name: Server gegen Postgres starten (Migrationen + Seeds)
+        env:
+          DATABASE_URL: postgres://huh:huh@localhost:5432/huh
+          PORT: "3000"
+        run: |
+          bun run index.ts > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3000/api/passkey/status && break
+            sleep 1
+          done
+          echo; cat server.log
+          grep -q "Migration angewendet: 029" server.log
+      - name: Rauchtest der öffentlichen Endpunkte
+        run: |
+          set -e
+          curl -fsS -o /dev/null http://localhost:3000/
+          curl -fsS -o /dev/null http://localhost:3000/speisekarte
+          curl -fsS -o /dev/null http://localhost:3000/reservierung
+          curl -fsS -o /dev/null http://localhost:3000/app
+          curl -fsS "http://localhost:3000/api/verfuegbarkeit?date=2030-06-05&guests=2&area=drinnen" | grep -q '"slots"'
+          # Validierter Schreibpfad (öffentliche Anfrage) + Ablehnung ungültiger Daten
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{"name":"CI","email":"ci@example.com","note":"Test"}' http://localhost:3000/api/anfragen | grep -q '"ok":true'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"name":"CI","email":"keine-mail","note":"Test"}' http://localhost:3000/api/anfragen)
+          test "$code" = "400"
+
+  image:
+    name: Docker-Image nach GHCR
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image-Namen (Kleinbuchstaben)
+        id: meta
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Auf Server ausrollen (optional)
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Prüfen, ob Deploy-Zugang hinterlegt ist
+        id: check
+        run: echo "on=${{ secrets.DEPLOY_HOST != '' }}" >> "$GITHUB_OUTPUT"
+      - name: SSH-Deploy (docker compose pull && up)
+        if: steps.check.outputs.on == 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH || '/opt/huh' }}
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull app
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+            docker image prune -f

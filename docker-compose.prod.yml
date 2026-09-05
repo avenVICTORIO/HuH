@@ -1,0 +1,30 @@
+# Produktion auf einem beliebigen Server: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+#   - app kommt als fertiges Image aus der GitHub Container Registry (CI baut es)
+#   - caddy terminiert HTTPS automatisch (Let's Encrypt) für DOMAIN – Passkeys brauchen HTTPS
+#   - der App-Port ist nach außen geschlossen, nur Caddy spricht mit der App
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/avenvictorio/huh:latest}
+    build: !reset null
+    ports: !reset []
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN in .env setzen, z. B. app.handaufsherz.restaurant}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

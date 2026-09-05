@@ -1,0 +1,42 @@
+# Kompletter Stack lokal (Docker Desktop / OrbStack): `docker compose up -d --build`
+#   app – Bun: Website + Team-App + API + WebSockets (ein Prozess, ein Port)
+#   db  – echtes Postgres 16 (statt PGlite), Daten im Volume `pgdata`
+# Werte kommen aus .env (siehe .env.example).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-huh}
+      POSTGRES_USER: ${POSTGRES_USER:-huh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-huh}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-huh} -d ${POSTGRES_DB:-huh}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    image: ${APP_IMAGE:-huh-app:local}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-huh}:${POSTGRES_PASSWORD:-huh}@db:5432/${POSTGRES_DB:-huh}
+      PHALA_API_KEY: ${PHALA_API_KEY:-}
+      KI_MODELL: ${KI_MODELL:-qwen/qwen3.8-27b}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3000/api/passkey/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

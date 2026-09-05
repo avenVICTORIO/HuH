@@ -1,0 +1,10 @@
+node_modules
+skills-ui/node_modules
+skills-ui/dist
+data
+.env
+.git
+.github
+.claude
+*.log
+.DS_Store
