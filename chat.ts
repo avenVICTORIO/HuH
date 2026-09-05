@@ -11,7 +11,7 @@ export const TEAM_RAUM = "team";
 export const dmRaum = (mitarbeiterId: string) => `ma-${mitarbeiterId}`;
 
 /** Wer bekommt Live-Ereignisse eines Raums? Team: alle; Direkt-Chat: die Person + Chat-Admins. */
-const themenFuer = (raum: string) =>
+export const themenFuer = (raum: string) =>
   raum === TEAM_RAUM ? ["alle"] : [`user:${raum.slice(3)}`, "chat.admin"];
 
 // Client meldet über den WebSocket, dass ein Raum gelesen wurde (kein Polling nötig).
@@ -34,8 +34,13 @@ export type Nachricht = {
   von_name: string;
   text: string;
   ts: number;
+  /** 1 = Antwort der KI-Assistenz (kein Mitarbeiter). */
+  ki: number;
   eigene: boolean;
 };
+
+const VON_NAME_SQL = `CASE WHEN n.ki = 1 THEN 'KI'
+  ELSE COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name, 'Ehemalige Person') END AS von_name`;
 
 type Person = { id: string; vorname: string | null; nachname: string | null; name: string; role: string };
 const anzeigeName = (m: Pick<Person, "vorname" | "nachname" | "name">) =>
@@ -76,8 +81,8 @@ export async function raeumeFuer(ich: Mitarbeiter): Promise<Raum[]> {
 
   const raeume: Raum[] = [];
   for (const b of basis) {
-    const letzte = await eins<{ text: string; ts: number; von: string | null }>(
-      "SELECT text, ts, von FROM chat_nachrichten WHERE raum = ? ORDER BY ts DESC LIMIT 1", b.id,
+    const letzte = await eins<{ text: string; ts: number; von: string | null; ki: number }>(
+      "SELECT text, ts, von, ki FROM chat_nachrichten WHERE raum = ? ORDER BY ts DESC LIMIT 1", b.id,
     );
     const u = await eins<{ c: number | string }>(
       "SELECT COUNT(*) AS c FROM chat_nachrichten WHERE raum = ? AND ts > ? AND (von IS NULL OR von <> ?)",
@@ -86,7 +91,7 @@ export async function raeumeFuer(ich: Mitarbeiter): Promise<Raum[]> {
     raeume.push({
       ...b,
       ungelesen: Number(u?.c ?? 0),
-      letzte: letzte ? { text: letzte.text, ts: Number(letzte.ts), eigene: letzte.von === ich.id } : null,
+      letzte: letzte ? { text: letzte.text, ts: Number(letzte.ts), eigene: letzte.von === ich.id, ki: Number(letzte.ki) === 1 } : null,
     });
   }
   return raeume;
@@ -103,23 +108,44 @@ async function alsGelesen(mitarbeiterId: string, raum: string, ts: number) {
 /** Nachrichten eines Raums (ohne `seit`: die letzten 200; mit `seit`: nur neuere). Markiert als gelesen. */
 export async function nachrichten(ich: Mitarbeiter, raum: string, seit = 0): Promise<Nachricht[]> {
   const sql = `
-    SELECT n.id, n.raum, n.von, n.text, n.ts,
-           COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name, 'Ehemalige Person') AS von_name
+    SELECT n.id, n.raum, n.von, n.text, n.ts, n.ki, ${VON_NAME_SQL}
       FROM chat_nachrichten n LEFT JOIN mitarbeiter m ON m.id = n.von
      WHERE n.raum = ? ${seit > 0 ? "AND n.ts > ?" : ""}
      ORDER BY n.ts ${seit > 0 ? "ASC LIMIT 500" : "DESC LIMIT 200"}`;
   const rows = await alle<Omit<Nachricht, "eigene">>(sql, ...(seit > 0 ? [raum, seit] : [raum]));
   if (seit <= 0) rows.reverse();
-  const liste = rows.map((r) => ({ ...r, ts: Number(r.ts), eigene: r.von === ich.id }));
+  const liste = rows.map((r) => ({ ...r, ts: Number(r.ts), ki: Number(r.ki), eigene: r.von === ich.id }));
   if (liste.length) await alsGelesen(ich.id, raum, liste[liste.length - 1].ts);
   return liste;
 }
 
+/** Die letzten n Nachrichten eines Raums als Kontext für die KI (älteste zuerst). */
+export async function verlaufFuerKi(raum: string, n: number): Promise<Pick<Nachricht, "von_name" | "text" | "ki" | "ts">[]> {
+  const rows = await alle<{ von_name: string; text: string; ki: number; ts: number }>(
+    `SELECT n.text, n.ts, n.ki, ${VON_NAME_SQL}
+       FROM chat_nachrichten n LEFT JOIN mitarbeiter m ON m.id = n.von
+      WHERE n.raum = ? ORDER BY n.ts DESC LIMIT ?`, raum, n,
+  );
+  return rows.reverse().map((r) => ({ ...r, ki: Number(r.ki), ts: Number(r.ts) }));
+}
+
+/** Fertige KI-Antwort speichern und wie jede Nachricht verteilen (mit `job`, damit die Tipp-Blase ersetzt wird). */
+export async function kiNachricht(raum: string, text: string, job: string): Promise<Nachricht> {
+  const n = { id: randomUUID(), raum, von: null, text, ts: Date.now(), ki: 1 };
+  await lauf(
+    "INSERT INTO chat_nachrichten (id, raum, von, text, ts, ki) VALUES (?, ?, NULL, ?, ?, 1)",
+    n.id, n.raum, n.text, n.ts,
+  );
+  const fertig = { ...n, von_name: "KI" };
+  for (const t of themenFuer(raum)) live.sende(t, { typ: "chat.nachricht", raum, job, nachricht: fertig });
+  return { ...fertig, eigene: false };
+}
+
 /** Nachricht senden; gibt sie so zurück, wie der Client sie anzeigt. */
 export async function senden(ich: Mitarbeiter, raum: string, text: string): Promise<Nachricht> {
-  const n = { id: randomUUID(), raum, von: ich.id, text, ts: Date.now() };
+  const n = { id: randomUUID(), raum, von: ich.id, text, ts: Date.now(), ki: 0 };
   await lauf(
-    "INSERT INTO chat_nachrichten (id, raum, von, text, ts) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO chat_nachrichten (id, raum, von, text, ts, ki) VALUES (?, ?, ?, ?, ?, 0)",
     n.id, n.raum, n.von, n.text, n.ts,
   );
   await alsGelesen(ich.id, raum, n.ts);

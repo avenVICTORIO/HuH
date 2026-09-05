@@ -448,6 +448,13 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       );
     `,
   },
+  {
+    // KI im Chat: Nachrichten der Assistenz haben keinen Mitarbeiter (von NULL) und ki = 1.
+    id: "019-chat-ki",
+    sql: /* sql */ `
+      ALTER TABLE chat_nachrichten ADD COLUMN ki INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 async function migrieren() {
