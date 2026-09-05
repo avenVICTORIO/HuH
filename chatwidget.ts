@@ -120,6 +120,7 @@ window.chatWidget=(function(){
   const hm=ts=>{ const d=new Date(ts); return p2(d.getHours())+":"+p2(d.getMinutes()); };
   const MON=["Jan","Feb","März","April","Mai","Juni","Juli","Aug","Sep","Okt","Nov","Dez"];
   const mobil=()=>window.innerWidth<=880;
+  const KI_NAME="avenHandAufsHerz"; // Anzeigename der KI-Assistenz (Server: chat.ts KI_NAME)
   let me=null, admin=false, sendeWs=function(){};
   let raeume=[], aktiv=null, nachrichten=[], scrollErzwingen=false, offen=false, geladen=false;
   let kiTippt=null; // {raum, job, text} – die KI schreibt gerade (gestreamt über den WebSocket)
@@ -136,7 +137,7 @@ window.chatWidget=(function(){
   }
   function renderRaeume(){
     g("chatRaeume").innerHTML='<div class="chat-raeume-titel">Chats</div>'+(raeume.map(r=>{
-      const v=r.letzte?((r.letzte.ki?"KI: ":r.letzte.eigene?"Du: ":"")+r.letzte.text.replace(/\\s+/g," ")):(r.untertitel||"");
+      const v=r.letzte?((r.letzte.ki?KI_NAME+": ":r.letzte.eigene?"Du: ":"")+r.letzte.text.replace(/\\s+/g," ")):(r.untertitel||"");
       return '<button class="chat-raum'+(r.id===aktiv?" aktiv":"")+(r.ungelesen?" ungelesen":"")+'" data-raum="'+r.id+'">'+
         '<div class="cr-kopf"><span class="cr-titel">'+esc(r.titel)+'</span>'+(r.ungelesen?'<span class="cr-badge">'+r.ungelesen+'</span>':'')+'</div>'+
         '<div class="cr-unter">'+esc(v)+'</div></button>';
@@ -191,7 +192,7 @@ window.chatWidget=(function(){
         '<div class="msg-text">'+esc(n.text)+'</div></div>';
     }
     // Die KI schreibt gerade: Blase mit dem bisherigen Text (kommt Stück für Stück über den WebSocket).
-    if(tippt) html+='<div class="msg ki tippt" data-job="'+tippt.job+'"><div class="msg-meta"><b>KI</b><span>schreibt …</span></div><div class="msg-text">'+esc(tippt.text)+'</div></div>';
+    if(tippt) html+='<div class="msg ki tippt" data-job="'+tippt.job+'"><div class="msg-meta"><b>'+KI_NAME+'</b><span>schreibt …</span></div><div class="msg-text">'+esc(tippt.text)+'</div></div>';
     v.innerHTML=html;
     if(amEnde||scrollErzwingen){ v.scrollTop=v.scrollHeight; scrollErzwingen=false; }
   }
