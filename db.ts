@@ -59,6 +59,23 @@ if (DATABASE_URL) {
   // sonst öffnet der neu geladene Code eine zweite Instanz auf dem gesperrten Datadir.
   const { PGlite } = await import("@electric-sql/pglite");
   const g = globalThis as { __huh_pg?: InstanceType<typeof PGlite> };
+  if (!g.__huh_pg) {
+    // Schutz: Zwei Prozesse auf demselben PGlite-Verzeichnis zerstören das WAL. Eine eigene
+    // Sperrdatei mit der echten Prozess-ID verhindert das (PGlite selbst prüft das nicht).
+    const { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } = await import("node:fs");
+    mkdirSync("data", { recursive: true });
+    const lock = "data/pg.lock";
+    if (existsSync(lock)) {
+      const pid = Number(readFileSync(lock, "utf8").trim());
+      let lebt = false;
+      if (pid && pid !== process.pid) { try { process.kill(pid, 0); lebt = true; } catch {} }
+      if (lebt) {
+        throw new Error(`data/pg wird bereits von Prozess ${pid} benutzt – zweite Instanz verweigert (sonst Datenverlust). Dev-Server stoppen oder dessen API nutzen.`);
+      }
+    }
+    writeFileSync(lock, String(process.pid));
+    process.on("exit", () => { try { if (readFileSync(lock, "utf8").trim() === String(process.pid)) unlinkSync(lock); } catch {} });
+  }
   const pg = (g.__huh_pg ??= new PGlite("data/pg"));
   // Sauber schließen, wenn der Prozess beendet wird (SIGTERM/SIGINT): ohne close()
   // bleibt das WAL in einem Zustand, den PGlite beim nächsten Start nicht mehr

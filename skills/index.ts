@@ -19,16 +19,20 @@ import * as ki from "../ki";
 import { alsDatum } from "../reservierungen";
 import {
   RESULT_SCHEMA, type Actor, type Context, type Flow, type FlowInfo, type Message, type Result,
-  type RunStatus, type Schema, type State,
+  type RunStatus, type Schema, type State, type Trigger,
 } from "./types";
+import { installiere as triggerInstallieren, triggerLabel } from "./triggers";
 
 import router from "./intent-router/flow";
+import trigger from "./trigger/flow";
 import hitl from "./hitl/flow";
 import logTime from "./log-time/flow";
+import weeklyHours from "./weekly-hours/flow";
 
 /** Every flow folder registers here. */
-export const FLOWS: Flow[] = [router, hitl, logTime];
+export const FLOWS: Flow[] = [router, trigger, hitl, logTime, weeklyHours];
 export const ROUTER_ID = router.id;
+export const TRIGGER_ID = trigger.id;
 
 const flowById = (id: string) => FLOWS.find((f) => f.id === id);
 const actorOf = (f: Flow, id: string) => f.actors.find((a) => a.id === id);
@@ -36,6 +40,8 @@ const MAX_HOPS = 20;
 /** Flows the router may start (no system flows, no components). */
 const startable = (): FlowInfo[] =>
   FLOWS.filter((f) => !f.system && !f.component).map(({ id, name, description, examples }) => ({ id, name, description, examples }));
+/** Flows with time/event triggers – targets of the system flow "trigger". */
+const triggered = () => FLOWS.filter((f) => f.triggers?.length);
 
 // ------------------------------------------------------------------ JSON Schema (Ajv)
 
@@ -181,7 +187,7 @@ async function deliver(runId: string, actorId: string, message: Message): Promis
       const target = flowById(result.handoff);
       if (!target) return finish(run, "error", `Flow „${result.handoff}“ nicht gefunden.`, state, actor.id);
       await setStatus(run.id, "done", actor.id, state);
-      const childId = await newRun(target, person, run.raum, {});
+      const childId = await newRun(target, person, run.raum, result.input ?? {});
       void deliver(childId, target.start, { kind: "start", text: result.text ?? "" });
       return { status: "done", handedOff: target.id };
     }
@@ -283,7 +289,7 @@ export function catalog() {
     const edges = [...f.edges];
     for (const a of f.actors) {
       for (const d of a.delegates ?? []) {
-        const targets = (d.to === "startable" ? startable().map((x) => x.id) : d.to).filter((id) => id !== f.id);
+        const targets = (d.to === "startable" ? startable().map((x) => x.id) : d.to === "triggered" ? triggered().map((x) => x.id) : d.to).filter((id) => id !== f.id);
         targets.forEach((id, i) => {
           const node = "flow:" + id;
           let ref = refs.find((r) => r.flow === id);
@@ -292,17 +298,19 @@ export function catalog() {
             ref = { flow: id, name: flowById(id)?.name ?? id, via: d.via, pos: { x: a.pos.x + 320, y: a.pos.y + (i - (targets.length - 1) / 2) * 170 } };
             refs.push(ref);
           } else ref.via = d.via;
-          if (!edges.some((e) => e.from === a.id && e.to === node)) edges.push({ from: a.id, to: node, label: d.via });
+          const label = d.to === "triggered" ? (flowById(id)?.triggers ?? []).map(triggerLabel).join(" · ") || d.via : d.via;
+          if (!edges.some((e) => e.from === a.id && e.to === node)) edges.push({ from: a.id, to: node, label });
         });
       }
     }
     return {
       id: f.id, name: f.name, description: f.description, examples: f.examples, start: f.start,
       system: !!f.system, component: !!f.component, input: f.input ?? null, output: f.output ?? null,
+      triggers: (f.triggers ?? []).map((t) => ({ ...t, label: triggerLabel(t) })),
       actors: f.actors.map((a) => ({
         id: a.id, name: a.name, kind: a.kind, description: a.description, pos: a.pos,
         input: a.input ?? null, output: a.output ?? null,
-        delegates: (a.delegates ?? []).map((d) => ({ via: d.via, to: d.to === "startable" ? startable().map((x) => x.id) : d.to })),
+        delegates: (a.delegates ?? []).map((d) => ({ via: d.via, to: d.to === "startable" ? startable().map((x) => x.id) : d.to === "triggered" ? triggered().map((x) => x.id) : d.to })),
       })),
       refs, edges,
     };
@@ -405,3 +413,16 @@ export async function cancel(id: string, person: Mitarbeiter, mayAll: boolean): 
   }
   return true;
 }
+
+// ------------------------------------------------------------------ Triggers (cron, events, manual)
+
+/** Fire a trigger: a run of the system flow "trigger" hands off to the target with { trigger } in its state. */
+export async function fire(target: Flow, trig: Trigger | { kind: "manual" }, person: Mitarbeiter, room: string, text: string): Promise<string> {
+  const t = flowById(TRIGGER_ID);
+  if (!t) throw new Error("Trigger-Flow fehlt");
+  const id = await newRun(t, person, room, { target: target.id, trigger: { ...trig, firedAt: Date.now() } });
+  void deliver(id, t.start, { kind: "start", text: text || `Trigger: ${target.name}` });
+  return id;
+}
+
+triggerInstallieren(FLOWS, fire);

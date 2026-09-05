@@ -19,10 +19,14 @@ export function starten(s: Server<WsDaten>) {
   server = s;
 }
 
-/** Ereignis an alle Sockets eines Themas. */
+/** Ereignis an alle Sockets eines Themas. Signale an „alle“ erreichen auch die Server-Hooks (Skill-Trigger). */
 export function sende(thema: string, ereignis: Record<string, unknown>) {
   server?.publish(thema, JSON.stringify(ereignis));
+  if (thema === "alle" && typeof ereignis.typ === "string") for (const h of signalHooks) { try { h(ereignis.typ); } catch (e) { console.error("Signal-Hook:", e); } }
 }
+const signalHooks: ((typ: string) => void)[] = [];
+/** Serverseitig auf Änderungssignale reagieren (z. B. Ereignis-Trigger für Skill-Flows). */
+export function beiSignal(h: (typ: string) => void) { signalHooks.push(h); }
 
 /** Handler für eingehende Client-Nachrichten eines Typs registrieren (z. B. chat.gelesen). */
 export function beiNachricht(typ: string, handler: Eingang) {

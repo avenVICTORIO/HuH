@@ -28,10 +28,21 @@ export type Message =
 export type Result =
   | { tell: string; say?: string; state?: State }                                    // post to the next actor's inbox
   | { ask: string; state?: State }                                                   // ask the person; the answer comes back here
-  | { handoff: string; text?: string; state?: State }                                // hand over to another flow (no return)
+  | { handoff: string; text?: string; input?: State; state?: State }                 // hand over to another flow (no return); `input` seeds its state
   | { call: string; then: string; text?: string; input?: State; state?: State }      // call a sub-flow; its result returns to actor `then`
   | { done: string; state?: State }                                                  // finished successfully
   | { cancel: string; state?: State };                                               // finished without result
+
+/**
+ * How a flow can be started besides the chat router:
+ *  - cron: 5-field schedule (minute hour day-of-month month day-of-week), local time
+ *  - event: a live signal name (reservierungen, zeiten, schichten, ablauf, team, karte)
+ * Triggered runs act on behalf of the owner (first Inhaber) in `room` (default "team");
+ * the started flow gets { trigger: { kind, ..., firedAt } } in its state.
+ */
+export type Trigger =
+  | { kind: "cron"; cron: string; room?: string; text?: string }
+  | { kind: "event"; on: string; room?: string; text?: string };
 
 /** Public description of a flow – what a router-like actor sees. */
 export type FlowInfo = { id: string; name: string; description: string; examples: string[] };
@@ -71,7 +82,7 @@ export type Actor = {
    * Which other flows this actor may delegate to – rendered in the canvas as flow nodes
    * with "handoff"/"call" edges. `to: "startable"` = every flow the router may start.
    */
-  delegates?: { via: "handoff" | "call"; to: string[] | "startable" }[];
+  delegates?: { via: "handoff" | "call"; to: string[] | "startable" | "triggered" }[];
   handle(message: Message, ctx: Context): Promise<Result>;
 };
 
@@ -87,6 +98,8 @@ export type Flow = {
   system?: boolean;
   /** Components (leaf skills) are only called by other flows, never directly from chat. */
   component?: boolean;
+  /** Time/event triggers handled by the system flow "trigger". */
+  triggers?: Trigger[];
   /** Actor that receives the start message. */
   start: string;
   actors: Actor[];
@@ -106,7 +119,7 @@ export const RESULT_SCHEMA: Schema = {
   oneOf: [
     { required: ["tell"], properties: { tell: { type: "string", minLength: 1 }, say: { type: "string" }, state: { type: "object" } }, additionalProperties: false },
     { required: ["ask"], properties: { ask: { type: "string", minLength: 1 }, state: { type: "object" } }, additionalProperties: false },
-    { required: ["handoff"], properties: { handoff: { type: "string", minLength: 1 }, text: { type: "string" }, state: { type: "object" } }, additionalProperties: false },
+    { required: ["handoff"], properties: { handoff: { type: "string", minLength: 1 }, text: { type: "string" }, input: { type: "object" }, state: { type: "object" } }, additionalProperties: false },
     { required: ["call", "then"], properties: { call: { type: "string", minLength: 1 }, then: { type: "string", minLength: 1 }, text: { type: "string" }, input: { type: "object" }, state: { type: "object" } }, additionalProperties: false },
     { required: ["done"], properties: { done: { type: "string" }, state: { type: "object" } }, additionalProperties: false },
     { required: ["cancel"], properties: { cancel: { type: "string" }, state: { type: "object" } }, additionalProperties: false },

@@ -1244,6 +1244,16 @@ const routen = {
         return Response.json({ id, raum }, { status: 201 });
       }),
     },
+    // Trigger von Hand auslösen (für Flows mit Zeit-/Ereignis-Triggern) – nur Team-Admin.
+    "/api/skills/:id/trigger": {
+      POST: nurTeamAdmin(async (req, ich) => {
+        const flow = skills.FLOWS.find((f) => f.id === req.params.id);
+        if (!flow) return Response.json({ fehler: "Flow nicht gefunden" }, { status: 404 });
+        if (flow.system || flow.component) return Response.json({ fehler: "Dieser Flow wird nicht ausgelöst." }, { status: 400 });
+        const id = await skills.fire(flow, { kind: "manual" }, ich, chat.TEAM_RAUM, "");
+        return Response.json({ id }, { status: 201 });
+      }),
+    },
     "/skills-canvas": async (req: Request) => {
       if (!(await wer(req))) return new Response("Bitte anmelden", { status: 401 });
       return new Response(Bun.file("public/skills-canvas.html"), { headers: { "Content-Type": "text/html; charset=utf-8" } });
