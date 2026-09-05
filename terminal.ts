@@ -260,8 +260,6 @@ ${baseCss}
       <a class="tile werkzeug" href="/team#meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
       <a class="tile werkzeug" href="/team#meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
       <a class="tile werkzeug" href="/team#reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
-      <a class="tile werkzeug" href="/team#inventur" data-cap="inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
-      <a class="tile werkzeug" href="/team#rezepte" data-cap="rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
       <a class="tile werkzeug" href="/team#heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
       <a class="tile werkzeug" href="/team#schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
       <a class="tile werkzeug" href="/team#auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>

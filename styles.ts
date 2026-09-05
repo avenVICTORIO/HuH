@@ -42,8 +42,6 @@ export const teamIcons: Record<string, string> = {
     <path d="M20 10c-3-2.4-7-3-12-2v22c5-1 9-.4 12 2 3-2.4 7-3 12-2V8c-5-1-9-.4-12 2Z"/><path d="M20 10v22"/></svg>`,
   anleitungen: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="20" cy="20" r="12"/><path d="M16.5 16.5a3.5 3.5 0 0 1 6.8 1c0 2.3-3.3 2.8-3.3 5"/><path d="M20 26.5h.01"/></svg>`,
-  drinks: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 8h20l-8.5 11v10"/><path d="M15 32h10"/><path d="M13.5 12.5h13"/></svg>`,
   reservierung: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <rect x="7" y="9" width="26" height="24" rx="4"/><path d="M7 16h26M14 6v6M26 6v6"/><path d="M14 23l3.5 3.5L26 20"/></svg>`,
   zeiten: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -54,8 +52,6 @@ export const teamIcons: Record<string, string> = {
     <path d="M7 7v26h26"/><path d="M13 26v-8M20 26V12M27 26v-5"/></svg>`,
   live: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <path d="M5 21h7l4-9 6 17 4-11h9"/></svg>`,
-  inventur: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M6 14l14-7 14 7-14 7-14-7Z"/><path d="M6 14v13l14 7 14-7V14"/><path d="M20 21v13"/></svg>`,
   schichtplan: /* html */ `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <rect x="6" y="8" width="28" height="26" rx="4"/><path d="M6 15h28M13 5v6M27 5v6"/><path d="M12 22h6M12 28h9M22 22h6"/></svg>`,
 };
