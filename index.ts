@@ -19,6 +19,7 @@ import { nichtGefundenPage } from "./site/fehler";
 import * as res from "./reservierungen";
 import * as ablauf from "./ablaeufe";
 import * as chat from "./chat";
+import * as live from "./live";
 import { OEFFNUNG } from "./site/info";
 import {
   CAPABILITIES,
@@ -373,9 +374,9 @@ async function klaerungFuer(mitarbeiterId: string, last: { type: string; ts: num
 const rolleImKatalog = async (name: string) =>
   !!(await eins("SELECT 1 AS x FROM rollen WHERE name = ?", name));
 
-const server = Bun.serve({
-  port: 3000,
-  routes: {
+// Alle Routen; schreibende API-Handler werden unten in live.mitSignalen() so
+// umwickelt, dass sie nach Erfolg ein Live-Signal an die offenen Browser senden.
+const routen = {
     // ---------------- Gästeseite ----------------
     "/": () => html(homePage),
     "/speisekarte": async () => html(await karteSeite()),
@@ -1427,12 +1428,25 @@ const server = Bun.serve({
         return new Response(null, { status: 204 });
       }),
     },
-  },
 
+    // ---- Live-Kanal (WebSocket): Auth über das Session-Cookie beim Upgrade ----
+    "/ws": async (req: Request) => {
+      const ich = await wer(req);
+      if (!ich) return new Response("Bitte anmelden", { status: 401 });
+      const ok = server.upgrade(req, { data: { id: ich.id, caps: ich.caps ?? [] } });
+      return ok ? (undefined as unknown as Response) : new Response("WebSocket erwartet", { status: 426 });
+    },
+};
+
+const server = Bun.serve<live.WsDaten>({
+  port: 3000,
+  routes: live.mitSignalen(routen) as never,
+  websocket: live.websocket,
   fetch: (req) =>
     new URL(req.url).pathname.startsWith("/api/")
       ? Response.json({ fehler: "nicht gefunden" }, { status: 404 })
       : html(nichtGefundenPage, 404),
 });
+live.starten(server);
 
 console.log(`Läuft auf http://localhost:${server.port}`);

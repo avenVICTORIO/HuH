@@ -473,9 +473,28 @@ $("klOk").addEventListener("click",async ()=>{
 /* Login identifiziert nur – danach direkt in den Arbeitsbereich.
    Gestempelt wird bewusst über das Menü, nie automatisch. */
 function betreten(){
+  liveVerbinden();
   if(current.klaerung){ zeigeKlaerung(); return; }
   nachLogin();
 }
+/* ---------- Live (WebSocket): Reservierungen, Abläufe und Chat-Zähler aktualisieren sich von selbst ---------- */
+let liveWs=null, liveWarte=1000;
+function liveVerbinden(){
+  if(liveWs&&(liveWs.readyState===0||liveWs.readyState===1)) return;
+  const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  liveWs=ws;
+  ws.onopen=()=>{ liveWarte=1000; };
+  ws.onmessage=e=>{
+    let d; try{ d=JSON.parse(e.data); }catch(x){ return; }
+    if(!current) return;
+    if(d.typ==="chat.nachricht"||d.typ==="chat.geloescht") ladeChatBadge();
+    else if(d.typ==="reservierungen") ladeReservierungenHeute();
+    else if(d.typ==="ablauf"){ ladeAblaufHome(); if(document.getElementById("screen-ablauf").classList.contains("active")) ladeAblauf(); }
+  };
+  ws.onclose=()=>{ liveWs=null; if(!current) return; setTimeout(liveVerbinden,liveWarte); liveWarte=Math.min(liveWarte*2,30000); };
+  ws.onerror=()=>{ try{ ws.close(); }catch(x){} };
+}
+function liveTrennen(){ const ws=liveWs; liveWs=null; if(ws){ try{ ws.close(); }catch(x){} } }
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
   // Werkzeug-Karten nach den Fähigkeiten der eigenen Rolle (Capability-Bundles).
@@ -545,7 +564,7 @@ $("btnStamp").addEventListener("click",async ()=>{
     renderHome();
   }
 });
-function sessionEnde(){ fetch("/api/session",{method:"DELETE"}); current=null; show("screen-login"); }
+function sessionEnde(){ fetch("/api/session",{method:"DELETE"}); current=null; liveTrennen(); show("screen-login"); }
 $("btnLogout").addEventListener("click",sessionEnde);
 
 /* ---------- Platzhalter-Kacheln ---------- */
