@@ -206,23 +206,23 @@ ${seitenkopf(
         <label class="feld"><span>Name *</span><input name="name" autocomplete="name" required></label>
         <div class="paar">
           <label class="feld"><span>E-Mail *</span><input type="email" name="email" autocomplete="email" required></label>
-          <label class="feld"><span>Telefon</span><input type="tel" name="telefon" autocomplete="tel"></label>
+          <label class="feld"><span>Telefon</span><input type="tel" name="phone" autocomplete="tel"></label>
         </div>
         <div class="paar">
           <label class="feld">
             <span>Anlass</span>
-            <select name="anlass">
+            <select name="occasion">
               <option value="">Bitte wählen</option>
               <option>Geburtstag</option><option>Hochzeit</option><option>Firmenfeier</option>
               <option>Weihnachtsfeier</option><option>Taufe</option><option>Anderer Anlass</option>
             </select>
           </label>
-          <label class="feld"><span>Wunschdatum</span><input type="date" name="datum" min="${heute}"></label>
+          <label class="feld"><span>Wunschdatum</span><input type="date" name="date" min="${heute}"></label>
         </div>
-        <label class="feld"><span>Wie viele Gäste?</span><input type="number" name="personen" min="1" max="120" placeholder="z. B. 18"></label>
+        <label class="feld"><span>Wie viele Gäste?</span><input type="number" name="guests" min="1" max="120" placeholder="z. B. 18"></label>
         <label class="feld">
           <span>Was schwebt euch vor? *</span>
-          <textarea name="notiz" required placeholder="Menüwünsche, Ernährungsformen, Uhrzeit, besondere Ideen …"></textarea>
+          <textarea name="note" required placeholder="Menüwünsche, Ernährungsformen, Uhrzeit, besondere Ideen …"></textarea>
         </label>
         <p style="font-size:13px; color:var(--taupe); margin:0 0 14px">
           Eure Angaben nutzen wir ausschließlich zur Bearbeitung dieser Anfrage (<a href="/datenschutz">Datenschutz</a>).
@@ -246,7 +246,7 @@ ${seitenkopf(
     const f = new FormData(anfrageForm);
     const daten = Object.fromEntries(f.entries());
     const zeig = (art, text) => { anfrageMelde.innerHTML = '<p class="melde ' + art + '">' + text + '</p>'; };
-    if (!daten.name?.trim() || !daten.email?.trim() || !daten.notiz?.trim()) {
+    if (!daten.name?.trim() || !daten.email?.trim() || !daten.note?.trim()) {
       return zeig("warn", "Bitte Name, E-Mail und eine kurze Beschreibung ausfüllen.");
     }
     anfrageKnopf.disabled = true; anfrageKnopf.textContent = "Wird gesendet …";

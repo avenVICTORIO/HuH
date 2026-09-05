@@ -1,16 +1,19 @@
 // Datenmodell der Fach-Entitäten als JSON Schema – die einzige Quelle der Wahrheit.
 //
 // Ablage: Tabelle `schemata` (JSON Schema als JSONB) und `dokumente` (Daten als JSONB,
-// Verweis aufs Schema). Für das bestehende SQL im Code gibt es je Entität eine VIEW mit
-// dem alten Tabellennamen und INSTEAD-OF-Triggern: Lesen und Schreiben funktionieren
-// unverändert, physisch liegt alles in `dokumente`. Neue Schemata (auch von der KI per
-// Tool-Call) brauchen keine Migration – sie sind nur eine Zeile in `schemata`.
+// Verweis aufs Schema). Feldnamen und Schema-IDs sind Englisch. Für jede Entität gibt es
+// eine englische VIEW (z. B. `reservations`) für Lesezugriffe per SQL (Joins, Aggregate);
+// Schreibzugriffe laufen über dokumente.ts (validiert, mit Akteur). Die Views schreiben
+// zur Sicherheit ebenfalls über INSTEAD-OF-Trigger in `dokumente`.
+// Jede Änderung an `schemata`/`dokumente` landet per Trigger in `*_verlauf` (Historie).
+// `legacy` an den Spalten sind die alten deutschen Namen – nur noch für die Migrationen.
 //
 // Konten, Passkeys, Rollen, Einladungen, Sessions, Chat und Skill-Läufe bleiben
 // bewusst klassische Tabellen (kein Fachdatenmodell).
 
 export type Spalte = {
-  name: string;
+  name: string;          // englischer Feldname (JSON-Schlüssel, Spalte der englischen View)
+  legacy: string;        // alter deutscher Spaltenname (Kompatibilitäts-View, Migration)
   typ: "text" | "int" | "double";
   nullable?: boolean;
   default?: string | number;
@@ -22,110 +25,108 @@ export type Spalte = {
 };
 
 export type Entitaet = {
-  id: string;
+  id: string;            // englische Schema-ID (= Name der englischen View)
+  legacyId: string;      // alte deutsche Tabellen-/View-Bezeichnung
   name: string;
   beschreibung: string;
-  /** Fähigkeit zum Lesen/Schreiben über die generische API; null = jede angemeldete Person. */
   lesen: string | null;
   schreiben: string | null;
-  /** Live-Signal nach Änderungen (reservierungen, zeiten, schichten, ablauf, karte). */
   signal: string;
   spalten: Spalte[];
-  /** Eindeutigkeiten (Spaltenkombinationen). */
-  unique?: string[][];
-  /** Beim Löschen mitlöschen: Dokumente dieser Entität, deren Feld auf die gelöschte id zeigt. */
-  kaskade?: { entitaet: string; feld: string }[];
+  unique?: string[][];                          // englische Feldnamen
+  kaskade?: { entitaet: string; feld: string }[]; // englische Schema-ID + Feld
 };
 
-const T = (name: string, o: Partial<Spalte> = {}): Spalte => ({ name, typ: "text", ...o });
-const I = (name: string, o: Partial<Spalte> = {}): Spalte => ({ name, typ: "int", ...o });
-const D = (name: string, o: Partial<Spalte> = {}): Spalte => ({ name, typ: "double", ...o });
+const col = (typ: Spalte["typ"]) => (name: string, legacy: string, o: Partial<Spalte> = {}): Spalte => ({ name, legacy, typ, ...o });
+const T = col("text"), I = col("int"), D = col("double");
 
 export const ENTITAETEN: Entitaet[] = [
   {
-    id: "reservierungen", name: "Reservierungen", signal: "reservierungen",
+    id: "reservations", legacyId: "reservierungen", name: "Reservierungen", signal: "reservierungen",
     beschreibung: "Tischreservierungen von der Website und aus dem Team-Bereich.",
     lesen: "reservierungen", schreiben: "reservierungen",
     spalten: [
-      T("code", { beschreibung: "Buchungscode für Gäste" }), T("name"), T("email", { format: "email" }), T("telefon"),
-      T("datum", { format: "date" }), T("zeit", { beschreibung: "HH:MM" }), I("personen", { min: 1, max: 60 }),
-      T("anlass", { nullable: true }), T("notiz", { nullable: true }),
-      T("status", { enum: ["offen", "bestaetigt", "abgesagt", "erledigt"], default: "offen" }),
-      D("erstellt", { beschreibung: "Unix-Millisekunden" }),
-      T("bereich", { enum: ["drinnen", "draussen"], default: "drinnen" }),
+      T("code", "code", { beschreibung: "Buchungscode für Gäste" }), T("name", "name"), T("email", "email", { format: "email", nullable: true }), T("phone", "telefon", { nullable: true }),
+      T("date", "datum", { format: "date" }), T("time", "zeit", { beschreibung: "HH:MM" }), I("guests", "personen", { min: 1, max: 60 }),
+      T("occasion", "anlass", { nullable: true }), T("note", "notiz", { nullable: true }),
+      T("status", "status", { enum: ["offen", "bestaetigt", "abgesagt", "erledigt"], default: "offen" }),
+      D("created_at", "erstellt", { beschreibung: "Unix-Millisekunden" }),
+      T("area", "bereich", { enum: ["drinnen", "draussen"], default: "drinnen" }),
     ],
     unique: [["code"]],
   },
   {
-    id: "anfragen", name: "Anfragen", signal: "reservierungen",
+    id: "inquiries", legacyId: "anfragen", name: "Anfragen", signal: "reservierungen",
     beschreibung: "Kontakt- und Gruppenanfragen von der Website.",
     lesen: "reservierungen", schreiben: "reservierungen",
     spalten: [
-      T("name"), T("email", { format: "email" }), T("telefon", { nullable: true }), T("anlass", { nullable: true }),
-      T("datum", { nullable: true }), I("personen", { nullable: true, min: 1 }), T("notiz", { nullable: true }),
-      T("status", { enum: ["neu", "inbearbeitung", "erledigt"], default: "neu" }), D("erstellt"),
+      T("name", "name"), T("email", "email", { format: "email" }), T("phone", "telefon", { nullable: true }), T("occasion", "anlass", { nullable: true }),
+      T("date", "datum", { nullable: true }), I("guests", "personen", { nullable: true, min: 1 }), T("note", "notiz", { nullable: true }),
+      T("status", "status", { enum: ["neu", "inbearbeitung", "erledigt"], default: "neu" }), D("created_at", "erstellt"),
     ],
   },
   {
-    id: "events", name: "Zeiten (Stempel)", signal: "zeiten",
+    id: "time_events", legacyId: "events", name: "Zeiten (Stempel)", signal: "zeiten",
     beschreibung: "Ein- und Ausstempel-Ereignisse; zwei Ereignisse bilden eine Arbeitssitzung.",
     lesen: "zeiten.admin", schreiben: "zeiten.admin",
-    spalten: [T("mitarbeiter_id"), T("type", { enum: ["in", "out"] }), D("ts", { beschreibung: "Unix-Millisekunden" })],
+    spalten: [T("employee_id", "mitarbeiter_id"), T("type", "type", { enum: ["in", "out"] }), D("ts", "ts", { beschreibung: "Unix-Millisekunden" })],
   },
   {
-    id: "schichten", name: "Schichten", signal: "schichten",
+    id: "shifts", legacyId: "schichten", name: "Schichten", signal: "schichten",
     beschreibung: "Konkrete Schichten im Kalender, aus der Vorlage erzeugt und mit Personen besetzt.",
     lesen: null, schreiben: "schichtplan",
     spalten: [
-      T("datum", { format: "date" }), T("rolle"), T("von"), T("bis"),
-      T("mitarbeiter_id", { nullable: true }), T("notiz", { nullable: true }), T("regel_id", { nullable: true }),
+      T("date", "datum", { format: "date" }), T("role", "rolle"), T("start", "von"), T("end", "bis"),
+      T("employee_id", "mitarbeiter_id", { nullable: true }), T("note", "notiz", { nullable: true }), T("rule_id", "regel_id", { nullable: true }),
     ],
   },
   {
-    id: "schicht_regeln", name: "Schicht-Vorlage", signal: "schichten",
+    id: "shift_rules", legacyId: "schicht_regeln", name: "Schicht-Vorlage", signal: "schichten",
     beschreibung: "Wiederkehrende Schichten (Rhythmus, Tage, Anzahl) – die einzige Quelle des Schichtplans.",
     lesen: "schichtplan", schreiben: "schichtplan",
     spalten: [
-      T("rolle"), T("von"), T("bis"), T("tage", { beschreibung: "Wochentage als CSV, 0 = Sonntag" }),
-      I("anzahl", { default: 1, min: 1, max: 10 }),
-      T("rhythmus", { enum: ["woechentlich", "zweiwoechentlich"], default: "woechentlich" }),
-      T("start", { nullable: true }), I("aktiv", { default: 1, min: 0, max: 1 }), I("sortierung", { default: 0 }),
+      T("role", "rolle"), T("start", "von"), T("end", "bis"), T("weekdays", "tage", { beschreibung: "Wochentage als CSV, 0 = Sonntag" }),
+      I("count", "anzahl", { default: 1, min: 1, max: 10 }),
+      T("rhythm", "rhythmus", { enum: ["woechentlich", "zweiwoechentlich"], default: "woechentlich" }),
+      T("start_date", "start", { nullable: true }), I("active", "aktiv", { default: 1, min: 0, max: 1 }), I("sort_order", "sortierung", { default: 0 }),
     ],
   },
   {
-    id: "karte_gruppen", name: "Karte · Gruppen", signal: "karte",
+    id: "menu_groups", legacyId: "karte_gruppen", name: "Karte · Gruppen", signal: "karte",
     beschreibung: "Gruppen der Speise- und Getränkekarte je Kapitel.",
     lesen: null, schreiben: "karte.admin",
-    spalten: [T("kapitel"), T("titel"), T("spalten", { nullable: true }), T("fussnote", { nullable: true }), I("sortierung", { default: 0 })],
-    kaskade: [{ entitaet: "karte_positionen", feld: "gruppe_id" }],
+    spalten: [T("chapter", "kapitel"), T("title", "titel"), T("columns", "spalten", { nullable: true }), T("footnote", "fussnote", { nullable: true }), I("sort_order", "sortierung", { default: 0 })],
+    kaskade: [{ entitaet: "menu_items", feld: "group_id" }],
   },
   {
-    id: "karte_positionen", name: "Karte · Positionen", signal: "karte",
+    id: "menu_items", legacyId: "karte_positionen", name: "Karte · Positionen", signal: "karte",
     beschreibung: "Gerichte und Getränke einer Gruppe mit Preisen und Kennzeichen.",
     lesen: null, schreiben: "karte.admin",
     spalten: [
-      T("gruppe_id"), T("name"), T("text", { nullable: true }), T("option", { nullable: true }), T("tags", { nullable: true }),
-      I("stern", { default: 0, min: 0, max: 1 }), T("preise", { nullable: true }), I("sortierung", { default: 0 }), I("aktiv", { default: 1, min: 0, max: 1 }),
+      T("group_id", "gruppe_id"), T("name", "name"), T("text", "text", { nullable: true }), T("option", "option", { nullable: true }), T("tags", "tags", { nullable: true }),
+      I("star", "stern", { default: 0, min: 0, max: 1 }), T("prices", "preise", { nullable: true }), I("sort_order", "sortierung", { default: 0 }), I("active", "aktiv", { default: 1, min: 0, max: 1 }),
     ],
   },
   {
-    id: "ablauf_aufgaben", name: "Abläufe · Aufgaben", signal: "ablauf",
+    id: "routine_tasks", legacyId: "ablauf_aufgaben", name: "Abläufe · Aufgaben", signal: "ablauf",
     beschreibung: "Checklisten-Aufgaben für Aufbau, Leerlauf und Abbau.",
     lesen: null, schreiben: "ablaeufe.admin",
     spalten: [
-      T("prozess", { enum: ["aufbau", "leerlauf", "abbau"] }), T("gruppe", { nullable: true }), T("titel"), T("info", { nullable: true }),
-      I("sortierung", { default: 0 }), I("aktiv", { default: 1, min: 0, max: 1 }),
+      T("process", "prozess", { enum: ["aufbau", "leerlauf", "abbau"] }), T("group", "gruppe", { nullable: true }), T("title", "titel"), T("info", "info", { nullable: true }),
+      I("sort_order", "sortierung", { default: 0 }), I("active", "aktiv", { default: 1, min: 0, max: 1 }),
     ],
-    kaskade: [{ entitaet: "ablauf_erledigt", feld: "aufgabe_id" }],
+    kaskade: [{ entitaet: "routine_done", feld: "task_id" }],
   },
   {
-    id: "ablauf_erledigt", name: "Abläufe · Erledigt", signal: "ablauf",
+    id: "routine_done", legacyId: "ablauf_erledigt", name: "Abläufe · Erledigt", signal: "ablauf",
     beschreibung: "Tagesfortschritt: welche Aufgabe wann von wem erledigt wurde.",
     lesen: null, schreiben: null,
-    spalten: [T("datum", { format: "date" }), T("aufgabe_id"), T("von", { nullable: true }), D("am")],
-    unique: [["datum", "aufgabe_id"]],
+    spalten: [T("date", "datum", { format: "date" }), T("task_id", "aufgabe_id"), T("employee_id", "von", { nullable: true }), D("done_at", "am")],
+    unique: [["date", "task_id"]],
   },
 ];
+
+export const entitaet = (id: string) => ENTITAETEN.find((e) => e.id === id || e.legacyId === id);
 
 // ------------------------------------------------------------------ JSON Schema
 
@@ -152,87 +153,219 @@ export function jsonSchema(e: Entitaet): Record<string, unknown> {
     properties,
     required,
     additionalProperties: false,
+    "x-fields": e.spalten.map((s) => s.name),
   };
 }
 
-// ------------------------------------------------------------------ Migration (SQL erzeugen)
+// ------------------------------------------------------------------ SQL-Bausteine
 
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
-const cast = (s: Spalte) =>
-  s.typ === "text" ? `data->>'${s.name}'` : s.typ === "int" ? `(data->>'${s.name}')::integer` : `(data->>'${s.name}')::double precision`;
+const NOW = "(EXTRACT(EPOCH FROM now()) * 1000)";
+const castOf = (s: Spalte, key: string) =>
+  s.typ === "text" ? `data->>'${key}'` : s.typ === "int" ? `(data->>'${key}')::integer` : `(data->>'${key}')::double precision`;
 const sqlDefault = (s: Spalte) => (typeof s.default === "number" ? String(s.default) : q(String(s.default)));
 
-/** Migration: schemata/dokumente anlegen, Daten kopieren, Tabellen zu Views mit Triggern machen. */
+/**
+ * View + Trigger für eine Entität in einem „Dialekt“: english (Spalten = Feldnamen) oder
+ * legacy (Spalten = alte deutsche Namen). Physisch immer englische JSON-Schlüssel.
+ */
+function viewSql(e: Entitaet, dialekt: "english" | "legacy"): string[] {
+  const view = dialekt === "english" ? e.id : e.legacyId;
+  const colName = (s: Spalte) => (dialekt === "english" ? s.name : s.legacy);
+  const json = `jsonb_build_object(${e.spalten.map((s) => `'${s.name}', NEW."${colName(s)}"`).join(", ")})`;
+  const fn = `${dialekt === "english" ? "en" : "de"}_${e.id}`;
+  return [
+    `CREATE VIEW ${view} AS SELECT id, ${e.spalten.map((s) => `${castOf(s, s.name)} AS "${colName(s)}"`).join(", ")} FROM dokumente WHERE schema_id = ${q(e.id)};`,
+    `CREATE OR REPLACE FUNCTION ins_${fn}() RETURNS trigger AS $$
+     BEGIN
+       ${e.spalten.filter((s) => s.default != null).map((s) => `NEW."${colName(s)}" := COALESCE(NEW."${colName(s)}", ${sqlDefault(s)});`).join("\n       ")}
+       NEW.id := COALESCE(NEW.id, gen_random_uuid()::text);
+       INSERT INTO dokumente (id, schema_id, data, erstellt, aktualisiert) VALUES (NEW.id, ${q(e.id)}, ${json}, ${NOW}, ${NOW});
+       RETURN NEW;
+     END $$ LANGUAGE plpgsql;`,
+    `CREATE OR REPLACE FUNCTION upd_${fn}() RETURNS trigger AS $$
+     BEGIN
+       UPDATE dokumente SET data = ${json}, aktualisiert = ${NOW} WHERE id = OLD.id AND schema_id = ${q(e.id)};
+       RETURN NEW;
+     END $$ LANGUAGE plpgsql;`,
+    `CREATE OR REPLACE FUNCTION del_${fn}() RETURNS trigger AS $$
+     BEGIN
+       ${(e.kaskade ?? []).map((k) => `DELETE FROM dokumente WHERE schema_id = ${q(k.entitaet)} AND data->>'${k.feld}' = OLD.id;`).join("\n       ")}
+       DELETE FROM dokumente WHERE id = OLD.id AND schema_id = ${q(e.id)};
+       RETURN OLD;
+     END $$ LANGUAGE plpgsql;`,
+    `CREATE TRIGGER t_ins_${view} INSTEAD OF INSERT ON ${view} FOR EACH ROW EXECUTE FUNCTION ins_${fn}();`,
+    `CREATE TRIGGER t_upd_${view} INSTEAD OF UPDATE ON ${view} FOR EACH ROW EXECUTE FUNCTION upd_${fn}();`,
+    `CREATE TRIGGER t_del_${view} INSTEAD OF DELETE ON ${view} FOR EACH ROW EXECUTE FUNCTION del_${fn}();`,
+  ];
+}
+
+const schemaInsertSql = (e: Entitaet) =>
+  `INSERT INTO schemata (id, name, beschreibung, schema, lesen, schreiben, signal, version, system, erstellt, aktualisiert)
+   VALUES (${q(e.id)}, ${q(e.name)}, ${q(e.beschreibung)}, ${q(JSON.stringify(jsonSchema(e)))}::jsonb, ${e.lesen ? q(e.lesen) : "NULL"}, ${e.schreiben ? q(e.schreiben) : "NULL"}, ${q(e.signal)}, 1, 1, ${NOW}, ${NOW});`;
+
+// ------------------------------------------------------------------ Migration 026 (eingefroren: deutsches Modell)
+
+/** Eingefrorener Stand der Migration 026 (deutsche IDs/Felder) – bleibt für frische Datenbanken reproduzierbar. */
 export function migrationSql(): string {
-  const now = "(EXTRACT(EPOCH FROM now()) * 1000)";
   const teile: string[] = [
     "BEGIN;",
-    `CREATE TABLE schemata (
-      id           TEXT PRIMARY KEY,
-      name         TEXT NOT NULL,
-      beschreibung TEXT,
-      schema       JSONB NOT NULL,
-      lesen        TEXT,
-      schreiben    TEXT,
-      signal       TEXT,
-      version      INTEGER NOT NULL DEFAULT 1,
-      system       INTEGER NOT NULL DEFAULT 0,
-      erstellt     DOUBLE PRECISION NOT NULL,
-      aktualisiert DOUBLE PRECISION NOT NULL
-    );`,
-    `CREATE TABLE dokumente (
-      id           TEXT PRIMARY KEY,
-      schema_id    TEXT NOT NULL REFERENCES schemata(id),
-      data         JSONB NOT NULL,
-      erstellt     DOUBLE PRECISION NOT NULL,
-      aktualisiert DOUBLE PRECISION NOT NULL
-    );`,
+    `CREATE TABLE schemata (id TEXT PRIMARY KEY, name TEXT NOT NULL, beschreibung TEXT, schema JSONB NOT NULL, lesen TEXT, schreiben TEXT, signal TEXT,
+      version INTEGER NOT NULL DEFAULT 1, system INTEGER NOT NULL DEFAULT 0, erstellt DOUBLE PRECISION NOT NULL, aktualisiert DOUBLE PRECISION NOT NULL);`,
+    `CREATE TABLE dokumente (id TEXT PRIMARY KEY, schema_id TEXT NOT NULL REFERENCES schemata(id), data JSONB NOT NULL,
+      erstellt DOUBLE PRECISION NOT NULL, aktualisiert DOUBLE PRECISION NOT NULL);`,
     "CREATE INDEX ix_dok_schema ON dokumente(schema_id, erstellt);",
     "CREATE INDEX ix_dok_data ON dokumente USING GIN (data jsonb_path_ops);",
     "CREATE INDEX ix_dok_datum ON dokumente(schema_id, (data->>'datum'));",
     "CREATE INDEX ix_dok_ma ON dokumente(schema_id, (data->>'mitarbeiter_id'));",
-    // Generische Trigger-Funktionen für Update/Delete (Entität kommt als Trigger-Argument).
     `CREATE OR REPLACE FUNCTION dok_view_upd() RETURNS trigger AS $$
-     BEGIN
-       UPDATE dokumente SET data = to_jsonb(NEW) - 'id', aktualisiert = ${now}
-        WHERE id = OLD.id AND schema_id = TG_ARGV[0];
-       RETURN NEW;
-     END $$ LANGUAGE plpgsql;`,
+     BEGIN UPDATE dokumente SET data = to_jsonb(NEW) - 'id', aktualisiert = ${NOW} WHERE id = OLD.id AND schema_id = TG_ARGV[0]; RETURN NEW; END $$ LANGUAGE plpgsql;`,
   ];
   for (const e of ENTITAETEN) {
-    const schema = JSON.stringify(jsonSchema(e));
+    // Deutsches Schema (Felder = legacy-Namen), Daten 1:1 aus der alten Tabelle.
+    const legacyEnt: Entitaet = { ...e, id: e.legacyId, spalten: e.spalten.map((s) => ({ ...s, name: s.legacy })), unique: e.unique?.map((u) => u.map((f) => e.spalten.find((s) => s.name === f)!.legacy)), kaskade: e.kaskade?.map((k) => ({ entitaet: entitaet(k.entitaet)!.legacyId, feld: entitaet(k.entitaet)!.spalten.find((s) => s.name === k.feld)!.legacy })) };
+    const schema = JSON.stringify({ ...jsonSchema(legacyEnt), "x-fields": undefined });
     teile.push(
       `INSERT INTO schemata (id, name, beschreibung, schema, lesen, schreiben, signal, version, system, erstellt, aktualisiert)
-       VALUES (${q(e.id)}, ${q(e.name)}, ${q(e.beschreibung)}, ${q(schema)}::jsonb, ${e.lesen ? q(e.lesen) : "NULL"}, ${e.schreiben ? q(e.schreiben) : "NULL"}, ${q(e.signal)}, 1, 1, ${now}, ${now});`,
-      // Daten kopieren (Spalten als JSON, id separat).
-      `INSERT INTO dokumente (id, schema_id, data, erstellt, aktualisiert)
-       SELECT t.id, ${q(e.id)}, to_jsonb(t) - 'id', ${now}, ${now} FROM ${e.id} t;`,
-      `ALTER TABLE ${e.id} RENAME TO _alt_${e.id};`,
-      `CREATE VIEW ${e.id} AS SELECT id, ${e.spalten.map((s) => `${cast(s)} AS "${s.name}"`).join(", ")} FROM dokumente WHERE schema_id = ${q(e.id)};`,
-      // Insert-Trigger je Entität (Defaults wie früher bei der Tabelle).
-      `CREATE OR REPLACE FUNCTION dok_ins_${e.id}() RETURNS trigger AS $$
+       VALUES (${q(legacyEnt.id)}, ${q(e.name)}, ${q(e.beschreibung)}, ${q(schema)}::jsonb, ${e.lesen ? q(e.lesen) : "NULL"}, ${e.schreiben ? q(e.schreiben) : "NULL"}, ${q(e.signal)}, 1, 1, ${NOW}, ${NOW});`,
+      `INSERT INTO dokumente (id, schema_id, data, erstellt, aktualisiert) SELECT t.id, ${q(legacyEnt.id)}, to_jsonb(t) - 'id', ${NOW}, ${NOW} FROM ${legacyEnt.id} t;`,
+      `ALTER TABLE ${legacyEnt.id} RENAME TO _alt_${legacyEnt.id};`,
+      `CREATE VIEW ${legacyEnt.id} AS SELECT id, ${legacyEnt.spalten.map((s) => `${castOf(s, s.name)} AS "${s.name}"`).join(", ")} FROM dokumente WHERE schema_id = ${q(legacyEnt.id)};`,
+      `CREATE OR REPLACE FUNCTION dok_ins_${legacyEnt.id}() RETURNS trigger AS $$
        BEGIN
-         ${e.spalten.filter((s) => s.default != null).map((s) => `NEW."${s.name}" := COALESCE(NEW."${s.name}", ${sqlDefault(s)});`).join("\n         ")}
+         ${legacyEnt.spalten.filter((s) => s.default != null).map((s) => `NEW."${s.name}" := COALESCE(NEW."${s.name}", ${sqlDefault(s)});`).join("\n         ")}
          NEW.id := COALESCE(NEW.id, gen_random_uuid()::text);
-         INSERT INTO dokumente (id, schema_id, data, erstellt, aktualisiert)
-         VALUES (NEW.id, ${q(e.id)}, to_jsonb(NEW) - 'id', ${now}, ${now});
+         INSERT INTO dokumente (id, schema_id, data, erstellt, aktualisiert) VALUES (NEW.id, ${q(legacyEnt.id)}, to_jsonb(NEW) - 'id', ${NOW}, ${NOW});
          RETURN NEW;
        END $$ LANGUAGE plpgsql;`,
-      // Delete-Trigger je Entität (mit Kaskaden).
-      `CREATE OR REPLACE FUNCTION dok_del_${e.id}() RETURNS trigger AS $$
+      `CREATE OR REPLACE FUNCTION dok_del_${legacyEnt.id}() RETURNS trigger AS $$
        BEGIN
-         ${(e.kaskade ?? []).map((k) => `DELETE FROM dokumente WHERE schema_id = ${q(k.entitaet)} AND data->>'${k.feld}' = OLD.id;`).join("\n         ")}
-         DELETE FROM dokumente WHERE id = OLD.id AND schema_id = ${q(e.id)};
+         ${(legacyEnt.kaskade ?? []).map((k) => `DELETE FROM dokumente WHERE schema_id = ${q(k.entitaet)} AND data->>'${k.feld}' = OLD.id;`).join("\n         ")}
+         DELETE FROM dokumente WHERE id = OLD.id AND schema_id = ${q(legacyEnt.id)};
          RETURN OLD;
        END $$ LANGUAGE plpgsql;`,
-      `CREATE TRIGGER t_ins_${e.id} INSTEAD OF INSERT ON ${e.id} FOR EACH ROW EXECUTE FUNCTION dok_ins_${e.id}();`,
-      `CREATE TRIGGER t_upd_${e.id} INSTEAD OF UPDATE ON ${e.id} FOR EACH ROW EXECUTE FUNCTION dok_view_upd(${q(e.id)});`,
-      `CREATE TRIGGER t_del_${e.id} INSTEAD OF DELETE ON ${e.id} FOR EACH ROW EXECUTE FUNCTION dok_del_${e.id}();`,
+      `CREATE TRIGGER t_ins_${legacyEnt.id} INSTEAD OF INSERT ON ${legacyEnt.id} FOR EACH ROW EXECUTE FUNCTION dok_ins_${legacyEnt.id}();`,
+      `CREATE TRIGGER t_upd_${legacyEnt.id} INSTEAD OF UPDATE ON ${legacyEnt.id} FOR EACH ROW EXECUTE FUNCTION dok_view_upd(${q(legacyEnt.id)});`,
+      `CREATE TRIGGER t_del_${legacyEnt.id} INSTEAD OF DELETE ON ${legacyEnt.id} FOR EACH ROW EXECUTE FUNCTION dok_del_${legacyEnt.id}();`,
     );
-    for (const u of e.unique ?? []) {
-      teile.push(`CREATE UNIQUE INDEX ux_dok_${e.id}_${u.join("_")} ON dokumente (${u.map((f) => `(data->>'${f}')`).join(", ")}) WHERE schema_id = ${q(e.id)};`);
+    for (const u of legacyEnt.unique ?? []) {
+      teile.push(`CREATE UNIQUE INDEX ux_dok_${legacyEnt.id}_${u.join("_")} ON dokumente (${u.map((f) => `(data->>'${f}')`).join(", ")}) WHERE schema_id = ${q(legacyEnt.id)};`);
     }
   }
   teile.push("COMMIT;");
+  return teile.join("\n");
+}
+
+// ------------------------------------------------------------------ Migration 028: Schema-Feinschliff
+
+/** Reservierungen: E-Mail/Telefon optional (Team legt Telefon-/Walk-in-Gäste ohne E-Mail an); alte Platzhalter "-" werden null. */
+export function migration028Sql(): string {
+  const e = entitaet("reservations")!;
+  return [
+    "BEGIN;",
+    `UPDATE schemata SET schema = ${q(JSON.stringify(jsonSchema(e)))}::jsonb, version = version + 1, aktualisiert = ${NOW} WHERE id = 'reservations';`,
+    `UPDATE dokumente SET data = data || '{"email": null}'::jsonb WHERE schema_id = 'reservations' AND data->>'email' = '-';`,
+    `UPDATE dokumente SET data = data || '{"phone": null}'::jsonb WHERE schema_id = 'reservations' AND data->>'phone' = '-';`,
+    "COMMIT;",
+  ].join("\n");
+}
+
+// ------------------------------------------------------------------ Migration 029: deutsche Brücken-Views weg
+
+/** Alle Zugriffe laufen über die englischen Views bzw. den Store – die deutschen Kompatibilitäts-Views sind Altlast. */
+export function migration029Sql(): string {
+  const teile = ["BEGIN;"];
+  for (const e of ENTITAETEN) {
+    teile.push(`DROP VIEW IF EXISTS ${e.legacyId};`, `DROP FUNCTION IF EXISTS ins_de_${e.id}();`, `DROP FUNCTION IF EXISTS upd_de_${e.id}();`, `DROP FUNCTION IF EXISTS del_de_${e.id}();`);
+  }
+  teile.push("COMMIT;");
+  return teile.join("\n");
+}
+
+// ------------------------------------------------------------------ Migration 027: Englisch, Historie, Aufräumen
+
+export function migration027Sql(): string {
+  const teile: string[] = ["BEGIN;"];
+  // 1) Alte (deutsche) Views und Trigger-Funktionen weg, Altlasten-Tabellen weg.
+  for (const e of ENTITAETEN) {
+    teile.push(`DROP VIEW IF EXISTS ${e.legacyId};`, `DROP FUNCTION IF EXISTS dok_ins_${e.legacyId}();`, `DROP FUNCTION IF EXISTS dok_del_${e.legacyId}();`);
+    for (const u of e.unique ?? []) teile.push(`DROP INDEX IF EXISTS ux_dok_${e.legacyId}_${u.map((f) => e.spalten.find((s) => s.name === f)!.legacy).join("_")};`);
+  }
+  teile.push("DROP FUNCTION IF EXISTS dok_view_upd();", "DROP INDEX IF EXISTS ix_dok_datum;", "DROP INDEX IF EXISTS ix_dok_ma;");
+  for (const e of ENTITAETEN) teile.push(`DROP TABLE IF EXISTS _alt_${e.legacyId} CASCADE;`);
+  // 2) Englische Schemata anlegen, Daten umschreiben (Schlüssel + schema_id), deutsche Schemata löschen.
+  for (const e of ENTITAETEN) {
+    teile.push(
+      schemaInsertSql(e),
+      `UPDATE dokumente SET schema_id = ${q(e.id)}, data = jsonb_build_object(${e.spalten.map((s) => `'${s.name}', data->'${s.legacy}'`).join(", ")}) WHERE schema_id = ${q(e.legacyId)};`,
+      `DELETE FROM schemata WHERE id = ${q(e.legacyId)};`,
+    );
+  }
+  teile.push(
+    "CREATE INDEX ix_dok_date ON dokumente(schema_id, (data->>'date'));",
+    "CREATE INDEX ix_dok_employee ON dokumente(schema_id, (data->>'employee_id'));",
+  );
+  // 3) Englische Views (neuer Code) und deutsche Kompatibilitäts-Views (Übergang).
+  for (const e of ENTITAETEN) teile.push(...viewSql(e, "english"), ...viewSql(e, "legacy"));
+  for (const e of ENTITAETEN) for (const u of e.unique ?? []) {
+    teile.push(`CREATE UNIQUE INDEX ux_dok_${e.id}_${u.join("_")} ON dokumente (${u.map((f) => `(data->>'${f}')`).join(", ")}) WHERE schema_id = ${q(e.id)};`);
+  }
+  // 4) Historie: jede Änderung an dokumente und schemata (auch über Views und spätere KI-Tool-Calls).
+  teile.push(
+    `CREATE TABLE dokumente_verlauf (
+      seq         BIGSERIAL PRIMARY KEY,
+      dokument_id TEXT NOT NULL,
+      schema_id   TEXT NOT NULL,
+      aktion      TEXT NOT NULL CHECK (aktion IN ('insert','update','delete')),
+      data_alt    JSONB,
+      data_neu    JSONB,
+      wer         TEXT,
+      ts          DOUBLE PRECISION NOT NULL
+    );`,
+    "CREATE INDEX ix_dv_dok ON dokumente_verlauf(dokument_id, seq);",
+    "CREATE INDEX ix_dv_schema ON dokumente_verlauf(schema_id, seq);",
+    `CREATE TABLE schemata_verlauf (
+      seq       BIGSERIAL PRIMARY KEY,
+      schema_id TEXT NOT NULL,
+      aktion    TEXT NOT NULL CHECK (aktion IN ('insert','update','delete')),
+      alt       JSONB,
+      neu       JSONB,
+      wer       TEXT,
+      ts        DOUBLE PRECISION NOT NULL
+    );`,
+    `CREATE OR REPLACE FUNCTION verlauf_dokumente() RETURNS trigger AS $$
+     BEGIN
+       IF TG_OP = 'INSERT' THEN
+         INSERT INTO dokumente_verlauf (dokument_id, schema_id, aktion, data_alt, data_neu, wer, ts) VALUES (NEW.id, NEW.schema_id, 'insert', NULL, NEW.data, current_setting('huh.user', true), ${NOW});
+         RETURN NEW;
+       ELSIF TG_OP = 'UPDATE' THEN
+         IF NEW.data IS DISTINCT FROM OLD.data OR NEW.schema_id IS DISTINCT FROM OLD.schema_id THEN
+           INSERT INTO dokumente_verlauf (dokument_id, schema_id, aktion, data_alt, data_neu, wer, ts) VALUES (NEW.id, NEW.schema_id, 'update', OLD.data, NEW.data, current_setting('huh.user', true), ${NOW});
+         END IF;
+         RETURN NEW;
+       ELSE
+         INSERT INTO dokumente_verlauf (dokument_id, schema_id, aktion, data_alt, data_neu, wer, ts) VALUES (OLD.id, OLD.schema_id, 'delete', OLD.data, NULL, current_setting('huh.user', true), ${NOW});
+         RETURN OLD;
+       END IF;
+     END $$ LANGUAGE plpgsql;`,
+    "CREATE TRIGGER t_verlauf_dokumente AFTER INSERT OR UPDATE OR DELETE ON dokumente FOR EACH ROW EXECUTE FUNCTION verlauf_dokumente();",
+    `CREATE OR REPLACE FUNCTION verlauf_schemata() RETURNS trigger AS $$
+     BEGIN
+       IF TG_OP = 'INSERT' THEN
+         INSERT INTO schemata_verlauf (schema_id, aktion, alt, neu, wer, ts) VALUES (NEW.id, 'insert', NULL, to_jsonb(NEW), current_setting('huh.user', true), ${NOW}); RETURN NEW;
+       ELSIF TG_OP = 'UPDATE' THEN
+         INSERT INTO schemata_verlauf (schema_id, aktion, alt, neu, wer, ts) VALUES (NEW.id, 'update', to_jsonb(OLD), to_jsonb(NEW), current_setting('huh.user', true), ${NOW}); RETURN NEW;
+       ELSE
+         INSERT INTO schemata_verlauf (schema_id, aktion, alt, neu, wer, ts) VALUES (OLD.id, 'delete', to_jsonb(OLD), NULL, current_setting('huh.user', true), ${NOW}); RETURN OLD;
+       END IF;
+     END $$ LANGUAGE plpgsql;`,
+    "CREATE TRIGGER t_verlauf_schemata AFTER INSERT OR UPDATE OR DELETE ON schemata FOR EACH ROW EXECUTE FUNCTION verlauf_schemata();",
+    // Startpunkt der Historie: aktueller Stand aller Dokumente und Schemata als „insert“.
+    `INSERT INTO dokumente_verlauf (dokument_id, schema_id, aktion, data_alt, data_neu, wer, ts) SELECT id, schema_id, 'insert', NULL, data, 'migration', ${NOW} FROM dokumente;`,
+    `INSERT INTO schemata_verlauf (schema_id, aktion, alt, neu, wer, ts) SELECT id, 'insert', NULL, to_jsonb(s), 'migration', ${NOW} FROM schemata s;`,
+    // Aufräumen: Marker früherer Seeds, die es nicht mehr gibt.
+    "DELETE FROM einstellungen WHERE k IN ('karte_gerichte_backfill', 'karte_kueche_seed', 'rezepte_details');",
+    "COMMIT;",
+  );
   return teile.join("\n");
 }

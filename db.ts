@@ -4,7 +4,7 @@
 // Beide Wege laufen durch dieselben Migrationen – identisches Verhalten, identisches Schema.
 
 import { randomUUID } from "node:crypto";
-import { migrationSql as datenmodellMigration } from "./datenmodell";
+import { migrationSql as datenmodellMigration, migration027Sql, migration028Sql, migration029Sql } from "./datenmodell";
 
 export type Mitarbeiter = {
   id: string;
@@ -562,6 +562,23 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
     id: "026-dokumentenspeicher",
     sql: datenmodellMigration(),
   },
+  {
+    // Englisches Datenmodell (Schema-IDs + Feldnamen), englische Views fuer neuen Code,
+    // deutsche Kompatibilitaets-Views als Bruecke, vollstaendige Historie fuer schemata/dokumente
+    // (dokumente_verlauf, schemata_verlauf) und Altlasten (_alt_*) entfernt.
+    id: "027-english-verlauf",
+    sql: migration027Sql(),
+  },
+  {
+    // Reservierungen: E-Mail und Telefon optional (Team-Buchungen), Platzhalter "-" -> null.
+    id: "028-reservations-optional-contact",
+    sql: migration028Sql(),
+  },
+  {
+    // Aller Code liest englische Views / schreibt ueber den Store: deutsche Bruecken-Views entfernen.
+    id: "029-legacy-views-entfernt",
+    sql: migration029Sql(),
+  },
 ];
 
 async function migrieren() {
@@ -594,7 +611,7 @@ async function saeen() {
 }
 
 async function schichtRegelnSaeen() {
-  const r = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM schicht_regeln");
+  const r = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM shift_rules");
   if (Number(r?.c ?? 0) > 0) return;
   // Standard-Tag: 1 Koch, 1 Kochhilfe, 2 Service, 1 Cleaning – täglich außer Dienstag (Ruhetag).
   const OHNE_DI = "0,1,3,4,5,6";
@@ -607,7 +624,7 @@ async function schichtRegelnSaeen() {
   for (let i = 0; i < REGELN.length; i++) {
     const [rolle, von, bis, anzahl] = REGELN[i];
     await lauf(
-      "INSERT INTO schicht_regeln (id, rolle, von, bis, tage, anzahl, rhythmus, start, aktiv, sortierung) VALUES (?, ?, ?, ?, ?, ?, 'woechentlich', NULL, 1, ?)",
+      'INSERT INTO shift_rules (id, role, start, "end", weekdays, count, rhythm, start_date, active, sort_order) VALUES (?, ?, ?, ?, ?, ?, \'woechentlich\', NULL, 1, ?)',
       randomUUID(), rolle, von, bis, OHNE_DI, anzahl, i + 1,
     );
   }
@@ -615,7 +632,7 @@ async function schichtRegelnSaeen() {
 }
 
 async function karteSaeen() {
-  const k = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM karte_gruppen");
+  const k = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM menu_groups");
   if (Number(k?.c ?? 0) > 0) return;
   // Einmaliger Import der bisherigen statischen Karte (Stand Juli 2026).
   const { SPEISEN, GETRAENKE } = await import("./site/karte-daten");
@@ -624,20 +641,20 @@ async function karteSaeen() {
     for (const gruppe of kapitel.gruppen) {
       const gid = randomUUID();
       await lauf(
-        "INSERT INTO karte_gruppen (id, kapitel, titel, spalten, fussnote, sortierung) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO menu_groups (id, chapter, title, columns, footnote, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
         gid, kapitel.id, gruppe.titel, gruppe.spalten?.join("|") ?? null, gruppe.fussnote ?? null, ++gSort,
       );
       let pSort = 0;
       for (const g of gruppe.gerichte) {
         await lauf(
-          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+          "INSERT INTO menu_items (id, group_id, name, text, option, tags, star, prices, sort_order, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
           randomUUID(), gid, g.name, g.text ?? null, g.option ?? null,
           g.tags?.join(",") ?? null, g.stern ? 1 : 0, g.preis ?? null, ++pSort,
         );
       }
       for (const z of gruppe.zeilen ?? []) {
         await lauf(
-          "INSERT INTO karte_positionen (id, gruppe_id, name, text, option, tags, stern, preise, sortierung, aktiv) VALUES (?, ?, ?, ?, NULL, NULL, 0, ?, ?, 1)",
+          "INSERT INTO menu_items (id, group_id, name, text, option, tags, star, prices, sort_order, active) VALUES (?, ?, ?, ?, NULL, NULL, 0, ?, ?, 1)",
           randomUUID(), gid, z.name, z.text ?? null,
           z.preise.map((p) => p ?? "").join("|"), ++pSort,
         );
@@ -654,7 +671,7 @@ async function ablaeufeSaeen() {
   const sort: Record<string, number> = { aufbau: 0, leerlauf: 0, abbau: 0 };
   for (const a of ABLAEUFE_SEED) {
     await lauf(
-      "INSERT INTO ablauf_aufgaben (id, prozess, gruppe, titel, info, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      'INSERT INTO routine_tasks (id, process, "group", title, info, sort_order, active) VALUES (?, ?, ?, ?, ?, ?, 1)',
       randomUUID(), a.prozess, a.gruppe, a.titel, a.info, sort[a.prozess]++,
     );
   }

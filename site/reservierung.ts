@@ -342,13 +342,13 @@ const js = /* js */ `
     const bereich = $("#slotBereich");
     bereich.innerHTML = '<p class="lade">Zeiten werden geladen …</p>';
     try {
-      const r = await fetch("/api/verfuegbarkeit?datum=" + zustand.datum + "&personen=" + zustand.personen + "&bereich=" + zustand.bereich);
+      const r = await fetch("/api/verfuegbarkeit?date=" + zustand.datum + "&guests=" + zustand.personen + "&area=" + zustand.bereich);
       const d = await r.json();
-      if (d.ruhetag) {
+      if (d.closed) {
         bereich.innerHTML = '<p class="melde warn">' + esc(d.hinweis) + '</p>';
         return;
       }
-      const frei = d.slots.filter((s) => s.buchbar);
+      const frei = d.slots.filter((s) => s.bookable);
       if (!frei.length) {
         bereich.innerHTML = '<p class="melde warn">An diesem Tag ist für ' + zustand.personen +
           ' Personen leider nichts mehr frei. Probiert einen anderen Tag – oder ruft uns an: ' +
@@ -356,10 +356,10 @@ const js = /* js */ `
         return;
       }
       bereich.innerHTML = '<div class="slots">' + d.slots.map((s) => {
-        const knapp = s.buchbar && s.frei <= 8;
-        return '<button type="button" class="slot' + (knapp ? " knapp" : "") + '" data-zeit="' + s.zeit + '"' +
-          (s.buchbar ? "" : " disabled") + ' aria-pressed="false">' + s.zeit +
-          '<small>' + (s.buchbar ? (knapp ? "nur noch wenige" : "frei") : "belegt") + '</small></button>';
+        const knapp = s.bookable && s.free <= 8;
+        return '<button type="button" class="slot' + (knapp ? " knapp" : "") + '" data-zeit="' + s.time + '"' +
+          (s.bookable ? "" : " disabled") + ' aria-pressed="false">' + s.time +
+          '<small>' + (s.bookable ? (knapp ? "nur noch wenige" : "frei") : "belegt") + '</small></button>';
       }).join("") + '</div>';
       bereich.querySelectorAll(".slot").forEach((b) => b.addEventListener("click", () => {
         zustand.zeit = b.dataset.zeit;
@@ -378,12 +378,12 @@ const js = /* js */ `
     const knopf = $("#absenden");
     const f = new FormData(e.target);
     const daten = {
-      datum: zustand.datum, zeit: zustand.zeit, personen: zustand.personen, bereich: zustand.bereich,
+      date: zustand.datum, time: zustand.zeit, guests: zustand.personen, area: zustand.bereich,
       name: (f.get("name") || "").trim(), email: (f.get("email") || "").trim(),
-      telefon: (f.get("telefon") || "").trim(), anlass: f.get("anlass"), notiz: f.get("notiz"),
+      phone: (f.get("telefon") || "").trim(), occasion: f.get("anlass"), note: f.get("notiz"),
     };
     const meldung = (text) => { $("#formFehler").innerHTML = '<p class="melde warn">' + esc(text) + '</p>'; };
-    if (!daten.name || !daten.email || !daten.telefon) return meldung("Bitte Name, E-Mail und Telefon ausfüllen.");
+    if (!daten.name || !daten.email || !daten.phone) return meldung("Bitte Name, E-Mail und Telefon ausfüllen.");
     if (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(daten.email)) return meldung("Bitte eine gültige E-Mail-Adresse angeben.");
 
     knopf.disabled = true; knopf.textContent = "Wird reserviert …";
@@ -402,10 +402,10 @@ const js = /* js */ `
         '<p style="color:var(--tinte-weich); max-width:44ch; margin:10px auto 0">Eure Reservierung ist notiert. Notiert euch den Code – damit könnt ihr sie jederzeit ansehen oder absagen.</p>' +
         '<div class="code">' + esc(d.code) + '</div>' +
         '<ul class="fertig-liste">' +
-          '<li><span>Datum</span><span>' + langesDatum(d.datum) + '</span></li>' +
-          '<li><span>Uhrzeit</span><span>' + esc(d.zeit) + ' Uhr</span></li>' +
-          '<li><span>Personen</span><span>' + d.personen + '</span></li>' +
-          '<li><span>Bereich</span><span>' + (BEREICH_TEXT[d.bereich] || esc(d.bereich)) + '</span></li>' +
+          '<li><span>Datum</span><span>' + langesDatum(d.date) + '</span></li>' +
+          '<li><span>Uhrzeit</span><span>' + esc(d.time) + ' Uhr</span></li>' +
+          '<li><span>Personen</span><span>' + d.guests + '</span></li>' +
+          '<li><span>Bereich</span><span>' + (BEREICH_TEXT[d.area] || esc(d.area)) + '</span></li>' +
           '<li><span>Name</span><span>' + esc(d.name) + '</span></li>' +
         '</ul>' +
         '<div class="aktionen" style="justify-content:center">' +
@@ -428,9 +428,9 @@ const js = /* js */ `
         '<span class="status-pille' + (abgesagt ? " abgesagt" : "") + '">' +
           (abgesagt ? "Abgesagt" : d.status === "bestaetigt" ? "Bestätigt" : "Notiert") + '</span>' +
         '<h3 style="margin:14px 0 4px">' + esc(d.name) + '</h3>' +
-        '<p style="color:var(--tinte-weich); margin:0">' + langesDatum(d.datum) + ' · ' + esc(d.zeit) +
-          ' Uhr · ' + d.personen + (d.personen === 1 ? " Person" : " Personen") +
-          ' · ' + (BEREICH_TEXT[d.bereich] || "") + '</p>' +
+        '<p style="color:var(--tinte-weich); margin:0">' + langesDatum(d.date) + ' · ' + esc(d.time) +
+          ' Uhr · ' + d.guests + (d.guests === 1 ? " Person" : " Personen") +
+          ' · ' + (BEREICH_TEXT[d.area] || "") + '</p>' +
         (abgesagt ? '' :
           '<div class="aktionen"><button class="btn linie klein" id="stornieren">Reservierung absagen</button></div>') +
       '</div>';
