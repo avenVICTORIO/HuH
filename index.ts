@@ -57,7 +57,7 @@ const nurTeamAdmin = mitCap("team.admin");
 /** Bereiche des Team-Bereichs – jeder unter /app/<bereich> erreichbar (Tabs in dashboard.ts). */
 const APP_BEREICHE = new Set([
   "heute", "reservierungen", "meine-schichten", "meine-zeiten", "chat", "karte",
-  "schichtplan", "auswertung", "ablaeufe", "team",
+  "schichtplan", "auswertung", "ablaeufe", "team", "rollen",
 ]);
 
 /** Dauerhafte Umleitung – hält die Links der alten Website am Leben. */
