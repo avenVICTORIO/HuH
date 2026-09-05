@@ -18,7 +18,7 @@ ${baseCss}
   .topbar .term:hover{color:var(--wald); border-color:var(--wald-hell);}
 
   /* ---- Seitenleisten-Navigation (Desktop) / Schublade (Mobil) ---- */
-  .rahmen{display:flex; align-items:flex-start; gap:10px; max-width:1160px; margin:0 auto; width:100%;}
+  .rahmen{display:flex; align-items:flex-start; gap:10px; width:100%;}
   .tabs{
     width:198px; flex:none; display:flex; flex-direction:column; gap:6px;
     padding:18px 0 18px 18px; position:sticky; top:82px;
@@ -30,7 +30,7 @@ ${baseCss}
   }
   .tab:hover{border-color:var(--line); color:var(--wald); background:var(--card);}
   .tab.active{background:var(--wald); color:var(--sand-hell); border-color:var(--wald); font-weight:600;}
-  .body{flex:1; min-width:0; padding:16px 18px 32px;}
+  .body{flex:1; min-width:0; padding:16px 22px 32px 18px;}
   .view{display:none;} .view.active{display:block;}
   .nav-knopf{display:none;}
   .nav-schleier{display:none;}
@@ -233,7 +233,7 @@ ${baseCss}
     cursor:pointer; color:var(--rot); font-size:13px; display:grid; place-items:center;}
 
   /* ---- Skills ---- */
-  .sk-layout{display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:14px; align-items:start; margin-top:12px;}
+  .sk-layout{display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:18px; align-items:start; margin-top:12px;}
   .sk-aside{position:sticky; top:78px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:10px;}
   .sk-aside-titel{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--grey); padding:6px 8px 8px;}
   .sk-liste{display:flex; flex-direction:column; gap:6px;}
@@ -327,7 +327,7 @@ ${baseCss}
   }
 
   /* ---- Daten (Schemata & Dokumente) ---- */
-  .dt-layout{display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:14px; align-items:start; margin-top:12px;}
+  .dt-layout{display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:18px; align-items:start; margin-top:12px;}
   .dt-main{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:16px; min-width:0;}
   .dt-schema{margin:10px 0 0; font-size:11.5px; background:var(--creme); border:1px solid var(--line); border-radius:12px; padding:10px 12px; max-height:360px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace;}
   .dt-neu{margin-top:10px; background:var(--creme); border:1px solid var(--line); border-radius:12px; padding:10px;}

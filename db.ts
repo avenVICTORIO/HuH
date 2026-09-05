@@ -43,7 +43,10 @@ let rohExec: (sql: string) => Promise<void>;
 if (DATABASE_URL) {
   // Produktion: echtes Postgres über Buns eingebauten Client.
   const { SQL } = await import("bun");
-  const sql = new SQL(DATABASE_URL);
+  // Genau eine Verbindung: die Historie-Trigger lesen den Akteur aus der Session-Variable
+  // `huh.user` (set_config) – mit einem Pool könnte der Schreibzugriff auf einer anderen
+  // Verbindung landen. Eine Verbindung reicht für den Betrieb eines Lokals locker.
+  const sql = new SQL({ url: DATABASE_URL, max: 1 });
   roh = async (text, params) => {
     const res = (await sql.unsafe(nummeriert(text), params as never[])) as Zeile[] & {
       count?: number;

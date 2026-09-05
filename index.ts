@@ -1575,7 +1575,7 @@ const routen = {
 };
 
 const server = Bun.serve<live.WsDaten>({
-  port: 3000,
+  port: Number(process.env.PORT ?? 3000),
   routes: live.mitSignalen(routen) as never,
   websocket: live.websocket,
   fetch: (req) =>
