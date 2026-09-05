@@ -40,7 +40,7 @@ export type Nachricht = {
 };
 
 /** Anzeigename der KI-Assistenz im Chat. */
-export const KI_NAME = "avenHandAufsHerz";
+export const KI_NAME = "avenVictorio";
 
 const VON_NAME_SQL = `CASE WHEN n.ki = 1 THEN '${KI_NAME}'
   ELSE COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name, 'Ehemalige Person') END AS von_name`;
