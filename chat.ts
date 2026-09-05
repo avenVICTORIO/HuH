@@ -132,6 +132,16 @@ export async function verlaufFuerKi(raum: string, n: number): Promise<Pick<Nachr
   return rows.reverse().map((r) => ({ ...r, ki: Number(r.ki), ts: Number(r.ts) }));
 }
 
+/** Nachrichten eines Raums in einem Zeitfenster (für Lauf-Exporte der Skills). */
+export async function nachrichtenZwischen(raum: string, von: number, bis: number) {
+  const rows = await alle<{ id: string; text: string; ts: number; ki: number; von_name: string }>(
+    `SELECT n.id, n.text, n.ts, n.ki, ${VON_NAME_SQL}
+       FROM chat_nachrichten n LEFT JOIN mitarbeiter m ON m.id = n.von
+      WHERE n.raum = ? AND n.ts BETWEEN ? AND ? ORDER BY n.ts ASC LIMIT 300`, raum, von, bis,
+  );
+  return rows.map((r) => ({ ...r, ts: Number(r.ts), ki: Number(r.ki) }));
+}
+
 /** Fertige KI-Antwort speichern und wie jede Nachricht verteilen (mit `job`, damit die Tipp-Blase ersetzt wird). */
 export async function kiNachricht(raum: string, text: string, job: string): Promise<Nachricht> {
   const n = { id: randomUUID(), raum, von: null, text, ts: Date.now(), ki: 1 };

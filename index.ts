@@ -1214,6 +1214,16 @@ const routen = {
       Response.json(await skills.runs(ich, hatCap(ich, "team.admin"), new URL(req.url).searchParams.get("flow")))),
     "/api/skills/pending": nurTeam(async (req, ich) =>
       Response.json(await skills.pending(ich, new URL(req.url).searchParams.get("raum") ?? ""))),
+    "/api/skills/laeufe/:id/export": nurTeam(async (req, ich) => {
+      const b = await skills.exportRun(req.params.id, ich, hatCap(ich, "team.admin"));
+      if (!b) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+      return new Response(JSON.stringify(b, null, 2), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Disposition": `attachment; filename="skill-lauf-${req.params.id.slice(0, 8)}.json"`,
+        },
+      });
+    }),
     "/api/skills/laeufe/:id": {
       DELETE: nurTeam(async (req, ich) =>
         (await skills.cancel(req.params.id, ich, hatCap(ich, "team.admin")))
