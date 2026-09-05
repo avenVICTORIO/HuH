@@ -9,7 +9,7 @@
     "start": "bun run index.ts"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.4",
+    "@electric-sql/pglite": "0.5.8",
     "@simplewebauthn/server": "^14.0.1"
   }
 }

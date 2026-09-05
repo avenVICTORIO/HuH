@@ -468,7 +468,7 @@ ${baseCss}
   <!-- ===== VIEW: ABLÄUFE / CHECKLISTEN (Admin) ===== -->
   <section class="view" id="v-ablaeufe">
     <div class="sec-title">Abläufe &amp; Checklisten</div>
-    <p class="hint">Diese Aufgaben führen die Mitarbeiter am Terminal durch den Abend. Die <b>Reihenfolge ist chronologisch</b> (mit ▲▼ ändern); die <b>Info</b> klappt bei der jeweils aktiven Aufgabe automatisch aus. Beim Aufbau erscheint nach der letzten Aufgabe der Tischplan.</p>
+    <p class="hint">Diese Aufgaben führen die Mitarbeiter am Terminal durch den Abend. Die <b>Reihenfolge ist chronologisch</b> (mit ▲▼ ändern); die <b>Info</b> klappt bei der jeweils aktiven Aufgabe automatisch aus.</p>
     <div class="ranges" id="abProzesse"></div>
     <div id="abListe"><div class="empty">lädt …</div></div>
     <div class="miniform">

@@ -98,38 +98,19 @@ ${baseCss}
   }
   .tiles-trenner::before, .tiles-trenner::after{content:""; flex:1; height:1px; background:var(--line);}
 
-  /* ---------- Reservierungs-Hintergrund (Platzhalter für den grafischen Tischplan) ---------- */
-  #screen-home{position:relative;}
-  #tischplan-bg{position:absolute; left:0; right:0; top:66px; bottom:0; z-index:0;
-    padding:14px 20px 40px; overflow:hidden; opacity:.55; pointer-events:none; -webkit-user-select:none; user-select:none;}
-  #tischplan-bg .tp-kopf{font-family:var(--serif); color:var(--wald); font-size:clamp(18px,4vw,22px); margin:2px 0 4px;}
-  #tischplan-bg .tp-kpi{font-size:13px; color:var(--clay); margin-bottom:10px;}
-  #tischplan-bg .tp-res{display:flex; gap:12px; align-items:baseline; padding:6px 2px; border-bottom:1px solid var(--line); font-size:14px; max-width:640px;}
-  #tischplan-bg .tp-zeit{font-family:var(--serif); color:var(--wald); min-width:52px;}
-  #tischplan-bg .tp-name{flex:1; color:var(--ink);} #tischplan-bg .tp-det{color:var(--grey); font-size:12.5px;}
-  #tischplan-bg .tp-leer{color:var(--grey); font-style:italic; padding:14px 2px;}
-  .home-front{position:relative; z-index:1; margin-top:30vh;}   /* (alt) */
-
-  /* ---------- Tischplan als Vollbild-Home + schlanke HuH-Leiste ---------- */
-  #screen-home.active{height:100vh; min-height:0; overflow:hidden; flex-direction:column;}
-  .huh-strip{display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--card); border-bottom:1px solid var(--line); flex:none;}
-  .huh-strip .hs-hallo{font-family:var(--serif); font-size:clamp(15px,3.5vw,19px); color:var(--wald); white-space:nowrap;}
-  .huh-strip .miniclock{font-variant-numeric:tabular-nums; font-size:14px; color:var(--clay); margin-left:auto;}
-  .huh-strip .hs-menu{background:var(--wald); color:#fff; border:none; border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer; font-family:var(--sans);}
-  .hs-aufbau{background:var(--amber); color:#fff; border:none; border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:var(--sans); white-space:nowrap;}
-  .tischplan-frame{flex:1; width:100%; border:0; display:block; background:var(--creme);}
-
-  /* Menü als Panel von rechts */
-  .menu-back{position:fixed; inset:0; z-index:45; background:rgba(34,38,31,.4); display:flex; justify-content:flex-end;}
-  .menu-karte{background:var(--creme); width:min(420px,92vw); height:100%; overflow-y:auto; padding:16px 16px calc(20px + env(safe-area-inset-bottom)); box-shadow:-16px 0 50px -20px rgba(0,0,0,.45);}
-  .mk-kopf{display:flex; align-items:center; margin-bottom:8px;}
-  .mk-kopf span{flex:1; font-family:var(--serif); font-size:20px; color:var(--wald);}
-  .mk-x{background:none; border:none; font-size:22px; color:var(--grey); cursor:pointer; line-height:1;}
-  .mk-titel{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--grey); margin:20px 0 8px;}
+  /* ---------- Reservierungen heute (Liste, kein Tischplan) ---------- */
+  .res-heute{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:4px 16px 6px; margin-bottom:6px;}
+  .res-heute .tp-kpi{font-size:13px; color:var(--clay); padding:10px 0 8px; border-bottom:1px solid var(--line);}
+  .res-heute .tp-res{display:flex; gap:12px; align-items:baseline; padding:10px 2px; border-bottom:1px solid var(--line); font-size:15px;}
+  .res-heute .tp-res:last-child{border-bottom:none;}
+  .res-heute .tp-zeit{font-family:var(--serif); color:var(--wald); min-width:52px; font-size:17px;}
+  .res-heute .tp-name{flex:1; color:var(--ink);} .res-heute .tp-det{color:var(--grey); font-size:12.5px; white-space:nowrap;}
+  .res-heute .tp-leer{color:var(--grey); font-style:italic; padding:14px 2px;}
+  .res-heute .tp-mehr{display:block; text-align:center; padding:10px 0 6px; font-size:13px; color:var(--wald);}
 
   /* Aufbau-Banner + Prozess-Buttons auf dem Home */
-  .ablauf-banner{display:flex; align-items:center; gap:12px; background:var(--amber); color:#fff;
-    border-radius:14px; padding:13px 16px; margin-bottom:16px; cursor:pointer; box-shadow:0 10px 26px -14px rgba(176,85,58,.7);}
+  .ablauf-banner{display:flex; align-items:center; gap:12px; width:100%; border:none; text-align:left; background:var(--amber); color:#fff;
+    font-family:var(--sans); font-size:15px; border-radius:14px; padding:13px 16px; margin-bottom:16px; cursor:pointer; box-shadow:0 10px 26px -14px rgba(176,85,58,.7);}
   .ablauf-banner .b-txt{flex:1; font-weight:600;} .ablauf-banner .b-go{font-size:13px; opacity:.9; white-space:nowrap;}
   .prozesse{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:0 0 18px;}
   .proz{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 12px; text-align:center; cursor:pointer; transition:transform .06s;}
@@ -247,47 +228,48 @@ ${baseCss}
 
 <!-- ============ HOME (nach Login) ============ -->
 <section id="screen-home" class="screen">
-  <!-- Schlanke HuH-Leiste über dem Tischplan -->
-  <div class="huh-strip">
-    <span class="hs-hallo" id="homeWho">Servus</span>
-    <button class="hs-aufbau" id="ablaufBanner" style="display:none"></button>
+  <div class="topbar">
+    <img src="/logo.png" alt="">
+    <div class="who" id="homeWho">Servus</div>
     <span class="miniclock" id="homeClock">--:--:--</span>
-    <button class="hs-menu" id="btnMenu">☰ Menü</button>
+    <button class="btn-logout" id="btnLogout">Abmelden</button>
   </div>
 
-  <!-- Tischplan-/Reservierungs-App im Vollbild -->
-  <iframe id="tischplanFrame" class="tischplan-frame" src="/tischplan" title="Tischplan &amp; Reservierungen" allow="fullscreen; clipboard-write"></iframe>
+  <div class="home-body">
+    <button class="ablauf-banner" id="ablaufBanner" style="display:none"></button>
 
-  <!-- Menü: Ausstempeln, Abläufe, Werkzeuge, Abmelden -->
-  <div class="menu-back" id="menuBack" style="display:none">
-    <div class="menu-karte">
-      <div class="mk-kopf"><span id="mkWho">Servus</span><button class="mk-x" id="mkClose">✕</button></div>
-      <div class="statuscard" id="statusCard">
-        <div class="lbl" id="statLbl">Eingestempelt seit</div>
-        <div class="since" id="statSince">--:--</div>
-        <div class="dur" id="statDur">00:00:00</div>
-        <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
-      </div>
-      <div class="mk-titel">Abläufe</div>
-      <div class="prozesse" id="prozesse"></div>
-      <div class="mk-titel">Werkzeuge</div>
-      <!-- Werkzeug-Karten nach Fähigkeiten der Rolle (data-cap leer = für alle). -->
-      <template id="tplWerkzeuge">
-        <a class="tile werkzeug" href="/team#meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
-        <a class="tile werkzeug" href="/team#meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
-        <a class="tile werkzeug" href="/team#reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
-        <a class="tile werkzeug" href="/team#inventur" data-cap="inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
-        <a class="tile werkzeug" href="/team#rezepte" data-cap="rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
-        <a class="tile werkzeug" href="/team#heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
-        <a class="tile werkzeug" href="/team#schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
-        <a class="tile werkzeug" href="/team#auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
-        <a class="tile werkzeug" href="/team#ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
-        <a class="tile werkzeug" href="/team#karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
-        <a class="tile werkzeug" href="/team#team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
-      </template>
-      <div class="tiles" id="tilesWerkzeuge"></div>
-      <button class="bigbtn" id="btnLogout" style="background:none; border:1px solid var(--line); color:var(--grey); margin-top:18px;">Abmelden</button>
+    <div class="statuscard" id="statusCard">
+      <div class="lbl" id="statLbl">Eingestempelt seit</div>
+      <div class="since" id="statSince">--:--</div>
+      <div class="dur" id="statDur">00:00:00</div>
+      <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
     </div>
+
+    <div class="tiles-trenner">Abläufe</div>
+    <div class="prozesse" id="prozesse"></div>
+
+    <!-- Nur mit Fähigkeit „reservierungen“: die heutige Liste (kein Tischplan). -->
+    <div id="resHeuteWrap" style="display:none">
+      <div class="tiles-trenner">Reservierungen heute</div>
+      <div class="res-heute" id="resHeute"></div>
+    </div>
+
+    <div class="tiles-trenner">Werkzeuge</div>
+    <!-- Werkzeug-Karten nach Fähigkeiten der Rolle (data-cap leer = für alle). -->
+    <template id="tplWerkzeuge">
+      <a class="tile werkzeug" href="/team#meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
+      <a class="tile werkzeug" href="/team#meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+      <a class="tile werkzeug" href="/team#reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
+      <a class="tile werkzeug" href="/team#inventur" data-cap="inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
+      <a class="tile werkzeug" href="/team#rezepte" data-cap="rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
+      <a class="tile werkzeug" href="/team#heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
+      <a class="tile werkzeug" href="/team#schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
+      <a class="tile werkzeug" href="/team#auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+      <a class="tile werkzeug" href="/team#ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
+      <a class="tile werkzeug" href="/team#karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
+      <a class="tile werkzeug" href="/team#team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+    </template>
+    <div class="tiles" id="tilesWerkzeuge"></div>
   </div>
 
   <!-- Vorschlag direkt nach Login -->
@@ -304,7 +286,7 @@ ${baseCss}
 <!-- ============ ABLAUF (Aufbau / Leerlauf / Abbau) ============ -->
 <section id="screen-ablauf" class="screen">
   <div class="topbar">
-    <button class="btn-logout" id="abZurueck">‹ Zum Tischplan</button>
+    <button class="btn-logout" id="abZurueck">‹ Zurück</button>
     <div class="who" id="abTitel">Aufbau</div>
     <div class="ablauf-fortschritt" id="abFort">0/0</div>
   </div>
@@ -494,8 +476,6 @@ function betreten(){
 }
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
-  { const w=$("mkWho"); if(w) w.textContent="Servus, "+current.name; }
-  { const mb=$("menuBack"); if(mb) mb.style.display="none"; }
   // Werkzeug-Karten nach den Fähigkeiten der eigenen Rolle (Capability-Bundles).
   const caps=current.caps||[];
   const darf=(c)=>!c||caps.includes("*")||caps.includes(c);
@@ -517,6 +497,7 @@ function renderHome(){
   }
   updateDuration();
   ladeAblaufHome();
+  ladeReservierungenHeute();
 }
 function updateDuration(){
   if(!current||!current.clockedIn) return;
@@ -565,9 +546,11 @@ const AB_LABEL={aufbau:"Aufbau",leerlauf:"Aufgaben bei Leerlauf",abbau:"Abbau"};
 const AB_KURZ={aufbau:"Aufbau",leerlauf:"Leerlauf",abbau:"Abbau"};
 function heute(){ const d=new Date(); return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); }
 
-/* --- Home: Reservierungs-Hintergrund (Tischplan-Platzhalter) --- */
-async function ladeTischplan(){
-  const bg=$("tischplan-bg"); if(!bg) return;
+/* --- Home: heutige Reservierungen als Liste (Pflege im Team-Bereich) --- */
+async function ladeReservierungenHeute(){
+  const wrap=$("resHeuteWrap"), box=$("resHeute");
+  const caps=(current&&current.caps)||[];
+  if(!(caps.includes("*")||caps.includes("reservierungen"))){ wrap.style.display="none"; return; }
   let liste=[], u=null;
   try{
     const [a,b]=await Promise.all([
@@ -575,15 +558,17 @@ async function ladeTischplan(){
       fetch("/api/reservierungen-uebersicht?datum="+heute()).then(r=>r.json()),
     ]);
     liste=Array.isArray(a)?a:[]; u=b;
-  }catch(e){ return; }
-  const aktiv=liste.filter(r=>r.status==="offen"||r.status==="bestaetigt");
-  let html='<div class="tp-kopf">Tischplan heute</div>';
+  }catch(e){ wrap.style.display="none"; return; }
+  const aktiv=liste.filter(r=>r.status==="offen"||r.status==="bestaetigt").sort((x,y)=>String(x.zeit).localeCompare(String(y.zeit)));
+  let html="";
   if(u&&!u.fehler) html+='<div class="tp-kpi">'+(u.gaeste||0)+' Gäste · '+(u.reservierungen||0)+' Reservierungen · drinnen '+(u.drinnen||0)+' / draußen '+(u.draussen||0)+'</div>';
   if(!aktiv.length) html+='<div class="tp-leer">Heute noch keine Reservierungen.</div>';
   else for(const r of aktiv){
     html+='<div class="tp-res"><span class="tp-zeit">'+esc(r.zeit)+'</span><span class="tp-name">'+esc(r.name)+'</span><span class="tp-det">'+r.personen+' Pers. · '+(r.bereich==="draussen"?"Draußen":"Drinnen")+'</span></div>';
   }
-  bg.innerHTML=html;
+  html+='<a class="tp-mehr" href="/team#reservierungen">Alle Reservierungen verwalten ›</a>';
+  box.innerHTML=html;
+  wrap.style.display="";
 }
 
 /* --- Home: Banner + Prozess-Buttons aus dem Tages-Status --- */
@@ -620,12 +605,7 @@ async function nachLogin(){
 $("vkStart").addEventListener("click",()=>{ $("vorschlag").style.display="none"; starteAblauf("aufbau"); });
 $("vkSpaeter").addEventListener("click",()=>{ $("vorschlag").style.display="none"; });
 $("ablaufBanner").addEventListener("click",()=>starteAblauf("aufbau"));
-$("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c){ $("menuBack").style.display="none"; starteAblauf(c.dataset.proz); } });
-
-/* --- HuH-Menü (Ecke) --- */
-$("btnMenu").addEventListener("click",()=>{ $("menuBack").style.display="flex"; });
-$("mkClose").addEventListener("click",()=>{ $("menuBack").style.display="none"; });
-$("menuBack").addEventListener("click",e=>{ if(e.target.id==="menuBack") $("menuBack").style.display="none"; });
+$("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c) starteAblauf(c.dataset.proz); });
 
 /* --- Ablauf-Runner --- */
 let abProzess="aufbau", abDaten=null;
@@ -668,7 +648,7 @@ $("ablaufBody").addEventListener("click",async e=>{
   const aufg=(abDaten&&abDaten.aufgaben)||[];
   const rest=aufg.filter(a=>!a.erledigt).length;
   if(aufg.length>0 && rest===0){
-    if(abProzess==="aufbau") toast("Aufbau fertig! <span class='big'>Der Tischplan ist bereit</span>","in",2600);
+    if(abProzess==="aufbau") toast("Aufbau fertig! <span class='big'>Alles bereit für den Abend</span>","in",2600);
     else toast(AB_KURZ[abProzess]+" abgeschlossen. Danke!","in",2000);
     setTimeout(zurueckHome,1400);
   }
