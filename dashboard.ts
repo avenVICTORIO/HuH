@@ -320,7 +320,7 @@ ${baseCss}
     <p>Melde dich mit deinem Passkey an – Fingerabdruck, Gesicht oder Geräte-Code.</p>
     <button type="button" id="gatePasskey" style="width:100%; padding:14px; border:none; border-radius:14px; background:var(--wald); color:var(--sand-hell); font-family:var(--sans); font-size:14px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; cursor:pointer;">Mit Passkey anmelden</button>
     <div class="gate-fehler" id="gateFehler"></div>
-    <a href="/app">← Zum Terminal</a>
+    <a href="/app">← Zum Dashboard</a>
   </div>
 </section>
 
@@ -329,7 +329,7 @@ ${baseCss}
   <img src="/logo.png" alt="Hand aufs Herz">
   <div class="ttl" id="ttl">Arbeitsbereich</div>
   <div class="miniclock" id="clock">--:--:--</div>
-  <a class="term" href="/app">Terminal ›</a>
+  <a class="term" href="/app">Dashboard ›</a>
   <button class="term" id="btnAbmelden" style="cursor:pointer; background:none; font-family:var(--sans);">Abmelden</button>
 </div>
 
