@@ -39,7 +39,10 @@ export type Nachricht = {
   eigene: boolean;
 };
 
-const VON_NAME_SQL = `CASE WHEN n.ki = 1 THEN 'KI'
+/** Anzeigename der KI-Assistenz im Chat. */
+export const KI_NAME = "avenHandAufsHerz";
+
+const VON_NAME_SQL = `CASE WHEN n.ki = 1 THEN '${KI_NAME}'
   ELSE COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name, 'Ehemalige Person') END AS von_name`;
 
 type Person = { id: string; vorname: string | null; nachname: string | null; name: string; role: string };
@@ -136,7 +139,7 @@ export async function kiNachricht(raum: string, text: string, job: string): Prom
     "INSERT INTO chat_nachrichten (id, raum, von, text, ts, ki) VALUES (?, ?, NULL, ?, ?, 1)",
     n.id, n.raum, n.text, n.ts,
   );
-  const fertig = { ...n, von_name: "KI" };
+  const fertig = { ...n, von_name: KI_NAME };
   for (const t of themenFuer(raum)) live.sende(t, { typ: "chat.nachricht", raum, job, nachricht: fertig });
   return { ...fertig, eigene: false };
 }
