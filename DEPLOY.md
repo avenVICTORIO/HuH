@@ -2,7 +2,8 @@
 
 Die App ist **ein** Bun-Prozess: er liefert die Website, die Team-App (server-gerendertes Frontend)
 und die API inklusive WebSockets auf einem Port. Deshalb besteht der Stack aus zwei Diensten:
-`app` (Bun) und `db` (Postgres 16). PGlite bleibt nur für die lokale Entwicklung ohne Docker.
+`app` (Bun) und `db` (Postgres 16), im Docker-Projekt `aven-victorio` (Container `aven-victorio-app`,
+`aven-victorio-db`). PGlite bleibt nur für die lokale Entwicklung ohne Docker.
 
 ## Lokal mit Docker / OrbStack
 
