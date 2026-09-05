@@ -8,10 +8,19 @@ import { randomUUID } from "node:crypto";
 export type Mitarbeiter = {
   id: string;
   name: string;
+  vorname: string;
+  nachname: string | null;
   role: string;
-  pin: string;
-  /** 1 = Admin (sieht Team, alle Zeiten); 0 = Mitarbeiter (nur eigene Zeiten + Reservierungen). */
+  /** Altlast (wird von den Capabilities abgelöst); 1 = Inhaber-Konto. */
   admin: number;
+  /** Fähigkeiten aus der Rolle (CSV aufgelöst); '*' = alles. Wird von wer()/Login befüllt. */
+  caps?: string[];
+  /** Personalstammblatt: MA-Code (z. B. "MA022"); null = kein Lohn/nicht gelistet. */
+  ma_code: string | null;
+  /** Gastromatic-Mitarbeiter-Nr. (z. B. "250022"); null = nicht vergeben. */
+  personalnr: string | null;
+  /** Soll-Wochenstunden; null = Abruf (keine feste Wochenstunden). */
+  soll_std: number | null;
 };
 
 type Zeile = Record<string, unknown>;
@@ -299,6 +308,92 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
       ALTER TABLE rezepte ADD COLUMN zubereitung TEXT;
     `,
   },
+  {
+    // Personalstammblatt-Felder. Alle nullable: Inhaber ohne Lohn (kein MA-Code),
+    // Aushilfe-Slots ohne Gastromatic-Nr., soll_std NULL = Abruf.
+    id: "012-stammblatt-felder",
+    sql: /* sql */ `
+      ALTER TABLE mitarbeiter ADD COLUMN ma_code    TEXT;
+      ALTER TABLE mitarbeiter ADD COLUMN personalnr TEXT;
+      ALTER TABLE mitarbeiter ADD COLUMN soll_std   DOUBLE PRECISION CHECK (soll_std >= 0);
+      CREATE UNIQUE INDEX ux_ma_code    ON mitarbeiter(ma_code);
+      CREATE UNIQUE INDEX ux_personalnr ON mitarbeiter(personalnr);
+    `,
+  },
+  {
+    // Abendführung: Aufgaben-Katalog (Aufbau/Leerlauf/Abbau) + geteilter Tages-Fortschritt.
+    id: "013-ablaeufe",
+    sql: /* sql */ `
+      CREATE TABLE ablauf_aufgaben (
+        id         TEXT PRIMARY KEY,
+        prozess    TEXT NOT NULL CHECK (prozess IN ('aufbau','leerlauf','abbau')),
+        gruppe     TEXT,
+        titel      TEXT NOT NULL,
+        info       TEXT,
+        sortierung INTEGER NOT NULL DEFAULT 0,
+        aktiv      INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX ix_ablauf_prozess ON ablauf_aufgaben(prozess, sortierung);
+
+      CREATE TABLE ablauf_erledigt (
+        id         TEXT PRIMARY KEY,
+        datum      TEXT NOT NULL,
+        aufgabe_id TEXT NOT NULL REFERENCES ablauf_aufgaben(id) ON DELETE CASCADE,
+        von        TEXT REFERENCES mitarbeiter(id) ON DELETE SET NULL,
+        am         DOUBLE PRECISION NOT NULL,
+        UNIQUE (datum, aufgabe_id)
+      );
+    `,
+  },
+  {
+    // Account-Reset: PIN-Logik komplett raus, Login läuft über Passkeys (WebAuthn).
+    // Mitarbeiter bekommen Vor- und Nachname; bestehende Namen werden gesplittet.
+    id: "014-passkeys",
+    sql: /* sql */ `
+      ALTER TABLE mitarbeiter ADD COLUMN vorname  TEXT;
+      ALTER TABLE mitarbeiter ADD COLUMN nachname TEXT;
+      UPDATE mitarbeiter SET
+        vorname  = COALESCE(NULLIF(split_part(name, ' ', 1), ''), name),
+        nachname = NULLIF(btrim(substr(name, length(split_part(name, ' ', 1)) + 2)), '');
+      ALTER TABLE mitarbeiter DROP COLUMN pin;
+
+      CREATE TABLE passkeys (
+        id             TEXT PRIMARY KEY,  -- Credential-ID (base64url)
+        mitarbeiter_id TEXT NOT NULL REFERENCES mitarbeiter(id) ON DELETE CASCADE,
+        public_key     TEXT NOT NULL,     -- COSE-Public-Key, base64url
+        counter        DOUBLE PRECISION NOT NULL DEFAULT 0,
+        transports     TEXT,
+        erstellt       DOUBLE PRECISION NOT NULL
+      );
+      CREATE INDEX ix_passkeys_ma ON passkeys(mitarbeiter_id);
+    `,
+  },
+  {
+    // Registrierung ist invite-only: Der allererste Passkey im Haus wird Admin,
+    // alle weiteren Konten entstehen über einen vom Admin erstellten Einladungslink.
+    id: "015-einladungen",
+    sql: /* sql */ `
+      CREATE TABLE einladungen (
+        code           TEXT PRIMARY KEY,
+        mitarbeiter_id TEXT NOT NULL REFERENCES mitarbeiter(id) ON DELETE CASCADE,
+        erstellt       DOUBLE PRECISION NOT NULL,
+        gueltig_bis    DOUBLE PRECISION NOT NULL,
+        benutzt        DOUBLE PRECISION
+      );
+      CREATE INDEX ix_einladungen_ma ON einladungen(mitarbeiter_id);
+    `,
+  },
+  {
+    // Zugriff wird capabilities-basiert: Rollen sind Bündel von Fähigkeiten
+    // (CSV; '*' = alles). Der Katalog der Fähigkeiten lebt in auth.ts.
+    id: "016-capabilities",
+    sql: /* sql */ `
+      ALTER TABLE rollen ADD COLUMN capabilities TEXT NOT NULL DEFAULT '';
+      UPDATE rollen SET capabilities = '*' WHERE name = 'Inhaber';
+      UPDATE rollen SET capabilities = 'reservierungen,inventur,rezepte'
+        WHERE name <> 'Inhaber' AND capabilities = '';
+    `,
+  },
 ];
 
 async function migrieren() {
@@ -318,27 +413,14 @@ async function migrieren() {
 
 // --------------------------------------------------------------------- Seeds
 
-/** Erste freie 4-stellige PIN ab 1001 (0009 ist für Sonderzwecke reserviert). */
-export async function allocatePin(): Promise<string> {
-  const vergeben = new Set(
-    (await alle<{ pin: string }>("SELECT pin FROM mitarbeiter")).map((r) => r.pin),
-  );
-  for (let n = 1001; n <= 9998; n++) {
-    const p = String(n).padStart(4, "0");
-    if (p !== "0009" && !vergeben.has(p)) return p;
-  }
-  throw new Error("keine freie PIN mehr");
-}
-
 async function saeen() {
   const m = await eins<{ c: number | string }>("SELECT COUNT(*) AS c FROM mitarbeiter");
   if (Number(m?.c ?? 0) === 0) {
     await lauf(
-      "INSERT INTO mitarbeiter (id, name, role, pin, admin) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)",
-      randomUUID(), "Victorio", "Inhaber", "1001", 1,
-      randomUUID(), "Alice", "Service", "1002", 0,
+      "INSERT INTO mitarbeiter (id, name, vorname, nachname, role, admin) VALUES (?, ?, ?, ?, ?, ?)",
+      randomUUID(), "Victorio", "Victorio", null, "Inhaber", 1,
     );
-    console.log("🌱 Team befüllt: Victorio (PIN 1001, Admin), Alice (PIN 1002)");
+    console.log("🌱 Team befüllt: Victorio (Inhaber/Admin) – Passkey beim ersten Login anlegen");
   }
 
   // Inventur-Beispieldaten: bei (fast) leerer Tabelle einmalig auffüllen.
@@ -862,6 +944,21 @@ async function rezeptDetailsSaeen() {
   console.log(`📖 Rezepte auf 20er-Ansätze skaliert (${kleine.length}) und Zubereitungen hinterlegt`);
 }
 
+/** Ablauf-Checklisten (Aufbau/Leerlauf/Abbau) aus dem Qualitätsmanagement-Dokument. */
+async function ablaeufeSaeen() {
+  if (await eins("SELECT 1 AS x FROM einstellungen WHERE k = 'ablaeufe_seed'")) return;
+  const { ABLAEUFE_SEED } = await import("./ablaeufe-daten");
+  const sort: Record<string, number> = { aufbau: 0, leerlauf: 0, abbau: 0 };
+  for (const a of ABLAEUFE_SEED) {
+    await lauf(
+      "INSERT INTO ablauf_aufgaben (id, prozess, gruppe, titel, info, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, 1)",
+      randomUUID(), a.prozess, a.gruppe, a.titel, a.info, sort[a.prozess]++,
+    );
+  }
+  await lauf("INSERT INTO einstellungen (k, v) VALUES ('ablaeufe_seed', '1') ON CONFLICT (k) DO NOTHING");
+  console.log(`🌱 Abläufe befüllt: ${ABLAEUFE_SEED.length} Aufgaben (Aufbau/Leerlauf/Abbau)`);
+}
+
 // Beim Import initialisieren -> Server und postinstall bekommen eine fertige DB.
 await migrieren();
 await saeen();
@@ -871,3 +968,4 @@ await karteSaeen();
 await karteKuecheBackfill();
 await kartenKuecheSaeen();
 await rezeptDetailsSaeen();
+await ablaeufeSaeen();

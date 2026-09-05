@@ -1,0 +1,149 @@
+{
+  "project": "hand-aufs-herz-reservations",
+  "version": "1.0.0",
+  "verifiedAt": "2026-07-15T03:39:34+02:00",
+  "toolchain": {
+    "nodeRequirement": ">=22.12",
+    "@playwright/test": "1.61.1",
+    "@sveltejs/vite-plugin-svelte": "6.2.0",
+    "@types/node": "24.0.0",
+    "svelte": "5.56.5",
+    "svelte-check": "4.3.0",
+    "tsx": "4.20.0",
+    "typescript": "5.9.2",
+    "vite": "7.3.6",
+    "vitest": "3.2.7"
+  },
+  "results": {
+    "cleanInstall": {
+      "status": "passed",
+      "command": "npm ci"
+    },
+    "npmAudit": {
+      "status": "passed",
+      "vulnerabilities": 0,
+      "command": "npm audit --audit-level=moderate"
+    },
+    "svelteCheck": {
+      "status": "passed",
+      "errors": 0,
+      "warnings": 0,
+      "command": "npm run check"
+    },
+    "unitTests": {
+      "status": "passed",
+      "testFiles": 8,
+      "tests": 44,
+      "command": "npm run test:unit"
+    },
+    "monthPlaybook": {
+      "status": "passed",
+      "days": 30,
+      "assertions": {
+        "allThirtyDaysExecuted": true,
+        "allRequiredScenariosCovered": true,
+        "noPhysicalInvariantViolations": true,
+        "backupRoundTripSucceeded": true,
+        "rushNotificationsSuppressed": true,
+        "fourSoloWalkInsSharedOneTable": true,
+        "rainNeverUsedOutside": true
+      },
+      "validationIssues": 0
+    },
+    "randomizedPlaybook": {
+      "status": "passed",
+      "seed": 1592598566,
+      "trials": 120,
+      "reservations": 2030,
+      "assigned": 1854,
+      "unassigned": 176,
+      "timedOutPlans": 101,
+      "invariantViolations": 0,
+      "outsideAssignmentsInRain": 0
+    },
+    "browserE2E": {
+      "status": "passed",
+      "tests": {
+        "passed": 20
+      },
+      "durationMilliseconds": 32246,
+      "viewport": "1024x768 and 390x844 (including isolated 390x70 header capture)",
+      "browser": "Chromium",
+      "command": "npm run test:e2e"
+    },
+    "productionBuild": {
+      "status": "passed",
+      "command": "npm run build"
+    },
+    "filesystemBuild": {
+      "status": "passed",
+      "files": 1,
+      "bytes": 273408,
+      "fileUrlLaunch": true,
+      "persistenceAfterReload": true,
+      "testApiExposed": false,
+      "pageErrors": 0,
+      "command": "npm run test:e2e:file"
+    },
+    "productionBrowserSmoke": {
+      "status": "passed",
+      "floorVisible": true,
+      "insideTableElements": 23,
+      "testApiExposed": false,
+      "pageErrors": 0
+    }
+  },
+  "artifacts": {
+    "productionDirectory": "dist/",
+    "filesystemDistribution": "dist-file/Hand-aufs-Herz.html",
+    "playwrightReport": "reports/playwright-results.json",
+    "monthReport": "reports/month-playbook.json",
+    "randomizedReport": "reports/randomized-playbook.json",
+    "uiReview": [
+      "reports/ui-review/opening-hours-split-1024x768.png",
+      "reports/ui-review/table-empty-1024x768.png",
+      "reports/ui-review/header-mobile-topbar-390x70.png",
+      "reports/ui-review/table-timeline-direct-1024x768.png",
+      "reports/ui-review/table-timeline-multiday-scroll-1024x768.png",
+      "reports/ui-review/time-plan-1024x768.png",
+      "reports/ui-review/time-plan-detail-multiday-1024x768.png",
+      "reports/ui-review/time-plan-continuous-next-day-1024x768.png",
+      "reports/ui-review/time-plan-mobile-390x844.png",
+      "reports/ui-review/reservation-search-1024x768.png",
+      "reports/ui-review/weather-overlay-1024x768.png",
+      "reports/ui-review/weather-overlay-mobile-390x844.png",
+      "reports/ui-review/weather-detail-1024x768.png",
+      "reports/ui-review/demo-tools-1024x768.png",
+      "reports/ui-review/demo-joined-tables-1024x768.png",
+      "reports/ui-review/demo-month-time-plan-1024x768.png",
+      "reports/ui-review/task-dropdown-1024x768.png",
+      "reports/ui-review/task-dropdown-mobile-390x844.png"
+    ],
+    "userGuideScreenshots": [
+      "docs/assets/user-guide/01-raumplan.png",
+      "docs/assets/user-guide/02-tischansicht.png",
+      "docs/assets/user-guide/03-reservierung-mit-zurueck.png",
+      "docs/assets/user-guide/04-aufgaben.png",
+      "docs/assets/user-guide/05-reservierung-anlegen.png",
+      "docs/assets/user-guide/06-walk-in.png",
+      "docs/assets/user-guide/07-suche.png",
+      "docs/assets/user-guide/08-zeitplan.png",
+      "docs/assets/user-guide/09-auto-plan.png",
+      "docs/assets/user-guide/10-manuelle-platzierung.png",
+      "docs/assets/user-guide/11-oeffnungszeiten.png",
+      "docs/assets/user-guide/12-wetter.png",
+      "docs/assets/user-guide/13-stossbetrieb.png"
+    ],
+    "packageLockSha256": "6230c9d6f7362765af7e84cc28f97e33345ace230f6e13b2b451353be404c1e2"
+  },
+  "knownDeliberateLimits": [
+    "Single-browser localStorage persistence; no cloud synchronization or concurrent-device merge.",
+    "No legacy data migration; schemaVersion must be exactly 1.",
+    "Native notifications require permission and an open application; no background push service.",
+    "Filesystem localStorage isolation is browser-specific and may depend on the absolute HTML file path; export a backup before moving or replacing the standalone file.",
+    "Weather in the filesystem distribution still requires internet access and external APIs that accept requests from a file origin.",
+    "Backup JSON contains unencrypted personal data.",
+    "Solver returns the best feasible plan within a runtime budget and does not prove global optimality.",
+    "The production solver runtime is sanitized to at most 1,000 milliseconds."
+  ]
+}

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { alle, eins, lauf, allocatePin, type Mitarbeiter } from "./db";
+import { alle, eins, lauf, type Mitarbeiter } from "./db";
+import * as passkey from "./passkey";
 import { sessionsFor, durationMs, clip, type Ev } from "./time";
 import { terminalPage } from "./terminal";
 import { dashboardPage } from "./dashboard";
@@ -17,10 +18,14 @@ import {
 import { nichtGefundenPage } from "./site/fehler";
 import * as res from "./reservierungen";
 import * as kueche from "./rezepte";
+import * as ablauf from "./ablaeufe";
 import { OEFFNUNG } from "./site/info";
 import {
+  CAPABILITIES,
+  hatCap,
   logoutCookie,
-  nurAdmin,
+  mitarbeiterMitCaps,
+  mitCap,
   nurTeam,
   sessionCookie,
   sitzungAendern,
@@ -34,6 +39,25 @@ import {
 const html = (s: string, status = 200) =>
   new Response(s, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
 
+/** Capability-Liste aus einem Request-Body: nur bekannte Schlüssel (oder '*'). */
+const capsAusBody = (v: unknown): string[] =>
+  Array.isArray(v)
+    ? [...new Set(v.map(String).filter((c) => c === "*" || c in CAPABILITIES))]
+    : [];
+
+// Capability-Wächter: Rollen bündeln Fähigkeiten (siehe CAPABILITIES in auth.ts).
+const nurReserv = mitCap("reservierungen");
+const nurInventur = mitCap("inventur");
+const nurInventurAdmin = mitCap("inventur.admin");
+const nurRezepte = mitCap("rezepte");
+const nurRezepteAdmin = mitCap("rezepte.admin");
+const nurKarteAdmin = mitCap("karte.admin");
+const nurSchicht = mitCap("schichtplan");
+const nurZeitenAdmin = mitCap("zeiten.admin");
+const nurAuswertung = mitCap("auswertung");
+const nurAblaeufe = mitCap("ablaeufe.admin");
+const nurTeamAdmin = mitCap("team.admin");
+
 /** Dauerhafte Umleitung – hält die Links der alten Website am Leben. */
 const um = (ziel: string) => () => Response.redirect(ziel, 301);
 
@@ -41,9 +65,9 @@ const text = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 
 const INV_BEREICHE = ["kueche", "bar", "keller"];
 
-/** Passt eine Person auf eine Schicht-Rolle? Admins dürfen überall einspringen. */
+/** Passt eine Person auf eine Schicht-Rolle? Wer den Schichtplan verwaltet, darf überall einspringen. */
 const rollePasst = (m: Mitarbeiter, schichtRolle: string) =>
-  !!m.admin || m.role.trim().toLowerCase() === schichtRolle.trim().toLowerCase();
+  hatCap(m, "schichtplan") || m.role.trim().toLowerCase() === schichtRolle.trim().toLowerCase();
 
 /** Feldprüfung einer Karten-Gruppe. */
 function karteGruppeFelder(b: Record<string, unknown> | null) {
@@ -187,13 +211,16 @@ async function schichtenGenerieren(von: string, bis: string): Promise<{ angelegt
 
     // 0) Datenhygiene: Zuweisungen lösen, deren Rolle nicht (mehr) zur Schicht passt
     //    (z. B. Service-Kraft auf Koch-Slot aus Altbeständen). Admins dürfen überall.
-    const besetzte = await alle<{ id: string; rolle: string; name: string; role: string; admin: number; pin: string; mid: string }>(
-      `SELECT s.id, s.rolle, m.id AS mid, m.name, m.role, m.admin, m.pin
-         FROM schichten s JOIN mitarbeiter m ON m.id = s.mitarbeiter_id
+    const besetzte = await alle<{ id: string; rolle: string; role: string; capabilities: string | null }>(
+      `SELECT s.id, s.rolle, m.role, r.capabilities
+         FROM schichten s
+         JOIN mitarbeiter m ON m.id = s.mitarbeiter_id
+         LEFT JOIN rollen r ON r.name = m.role
         WHERE s.datum = ?`, datum,
     );
     for (const s of besetzte) {
-      if (!rollePasst({ id: s.mid, name: s.name, role: s.role, admin: s.admin, pin: s.pin }, s.rolle)) {
+      const caps = (s.capabilities ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+      if (!rollePasst({ role: s.role, caps } as Mitarbeiter, s.rolle)) {
         await lauf("UPDATE schichten SET mitarbeiter_id = NULL WHERE id = ?", s.id);
       }
     }
@@ -298,19 +325,51 @@ function teamFelder(b: Record<string, unknown>) {
   };
 }
 
-const listAll = () =>
-  alle<Mitarbeiter>("SELECT id, name, role, pin, admin FROM mitarbeiter ORDER BY name");
+/** Spalten des Mitarbeiter-Datensatzes – an einer Stelle, damit alle Queries synchron bleiben. */
+const MA_COLS = "id, name, vorname, nachname, role, admin, ma_code, personalnr, soll_std";
 
-const byPin = (pin: string) =>
-  eins<Mitarbeiter>("SELECT id, name, role, pin, admin FROM mitarbeiter WHERE pin = ?", pin);
+const listAll = () =>
+  alle<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter ORDER BY name`);
+
+const byMaCode = (code: string) =>
+  eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE ma_code = ?`, code);
+
+const byPersonalnr = (nr: string) =>
+  eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE personalnr = ?`, nr);
 
 const lastEvent = (id: string) =>
   eins<{ type: "in" | "out"; ts: number }>(
     "SELECT type, ts FROM events WHERE mitarbeiter_id = ? ORDER BY ts DESC LIMIT 1", id,
   );
 
-const isValidPin = (p: unknown): p is string =>
-  typeof p === "string" && /^\d{4}$/.test(p) && p !== "0009";
+/**
+ * Login-Antwort fürs Terminal: Identität + Schichtstatus + offene Klärung.
+ * Wird nach erfolgreichem Passkey-Login und beim Session-Check gebaut.
+ */
+async function loginPayload(emp: Mitarbeiter) {
+  const last = await lastEvent(emp.id);
+  const clockedIn = last?.type === "in";
+  return {
+    id: emp.id, name: emp.name, vorname: emp.vorname, nachname: emp.nachname,
+    role: emp.role, caps: emp.caps ?? [], admin: hatCap(emp, "team.admin"),
+    clockedIn, since: clockedIn ? last!.ts : null,
+    klaerung: await klaerungFuer(emp.id, last),
+  };
+}
+
+/** Leere Eingabe -> null; sonst getrimmter String. */
+const leerZuNull = (v: unknown): string | null => {
+  const s = (v ?? "").toString().trim();
+  return s === "" ? null : s;
+};
+
+/** Soll-Wochenstunden: leer -> null (Abruf); sonst Zahl >= 0. `false` = ungültig. */
+const parseSoll = (v: unknown): number | null | false => {
+  const s = (v ?? "").toString().trim().replace(",", ".");
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : false;
+};
 
 /** Stempeln ist nur ±2 h um die geplante Schicht erlaubt. */
 const STEMPEL_PUFFER_MS = 2 * 60 * 60 * 1000;
@@ -393,6 +452,12 @@ const server = Bun.serve({
     "/terminal": () => html(terminalPage),
     "/team": () => html(dashboardPage),
     "/dashboard": um("/team"),
+    // Tischplan-/Reservierungs-App (eigenständige Svelte-App, gebaut als eine Datei).
+    // Wird im Terminal-Home als Vollbild eingebettet. Quellcode: tischplan/, Build: bun run tischplan:build.
+    "/tischplan": () =>
+      new Response(Bun.file("public/tischplan.html"), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
     "/logo.png": () => new Response(Bun.file("public/logo.png")),
 
     // ---- Favicons, App-Icons & Manifest (erzeugt via `bun run icons`) ----
@@ -444,7 +509,7 @@ const server = Bun.serve({
 
     // ---- Reservierung anlegen (Gast) / Tagesliste (Team) ----
     "/api/reservierungen": {
-      GET: nurTeam(async (req) => {
+      GET: nurReserv(async (req) => {
         const datum = new URL(req.url).searchParams.get("datum");
         if (datum && !res.istDatum(datum)) {
           return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
@@ -501,7 +566,7 @@ const server = Bun.serve({
 
     // ---- Team: Reservierung anlegen (Telefon/Walk-in – nur Formatprüfung) ----
     "/api/team/reservierungen": {
-      POST: nurTeam(async (req) => {
+      POST: nurReserv(async (req) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültige Anfrage" }, { status: 400 });
         const daten = teamFelder(b);
@@ -513,7 +578,7 @@ const server = Bun.serve({
 
     // ---- Team: Status setzen, bearbeiten, löschen ----
     "/api/team/reservierungen/:id": {
-      PATCH: nurTeam(async (req) => {
+      PATCH: nurReserv(async (req) => {
         const { status } = (await req.json().catch(() => ({}))) as { status?: string };
         const erlaubt = ["offen", "bestaetigt", "abgesagt", "erledigt"] as const;
         if (!erlaubt.includes(status as never)) {
@@ -524,7 +589,7 @@ const server = Bun.serve({
         }
         return Response.json({ id: req.params.id, status });
       }),
-      PUT: nurTeam(async (req) => {
+      PUT: nurReserv(async (req) => {
         const b = await req.json().catch(() => null);
         if (!b) return Response.json({ fehler: "Ungültige Anfrage" }, { status: 400 });
         const daten = teamFelder(b);
@@ -533,7 +598,7 @@ const server = Bun.serve({
         if (!zeile) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json(zeile);
       }),
-      DELETE: nurTeam(async (req) => {
+      DELETE: nurReserv(async (req) => {
         if (!(await res.loeschen(req.params.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
@@ -553,8 +618,8 @@ const server = Bun.serve({
 
     // ---- Kapazität (Plätze drinnen/draußen, optionales Gesamt-Limit) ----
     "/api/kapazitaet": {
-      GET: nurTeam(async () => Response.json(await res.kapazitaet())),
-      PUT: nurAdmin(async (req) => {
+      GET: nurReserv(async () => Response.json(await res.kapazitaet())),
+      PUT: nurReserv(async (req) => {
         const b = await req.json().catch(() => null);
         const drinnen = Number(b?.drinnen), draussen = Number(b?.draussen);
         const puffer = Number(b?.puffer);
@@ -570,7 +635,7 @@ const server = Bun.serve({
     },
 
     // ---- Team: Kennzahlen eines Tages ----
-    "/api/reservierungen-uebersicht": nurTeam(async (req) => {
+    "/api/reservierungen-uebersicht": nurReserv(async (req) => {
       const datum = new URL(req.url).searchParams.get("datum") ?? res.alsDatum(new Date());
       if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
       return Response.json(await res.tagesUebersicht(datum));
@@ -578,7 +643,7 @@ const server = Bun.serve({
 
     // ---- Inventur: Team zählt Bestände, Artikel & Soll pflegt der Admin ----
     "/api/inventar": {
-      GET: nurTeam(async (req) => {
+      GET: nurInventur(async (req) => {
         const bereich = new URL(req.url).searchParams.get("bereich");
         if (bereich && !INV_BEREICHE.includes(bereich)) {
           return Response.json({ fehler: "Unbekannter Bereich" }, { status: 400 });
@@ -588,7 +653,7 @@ const server = Bun.serve({
           : await alle("SELECT * FROM inventar ORDER BY bereich, name");
         return Response.json(rows);
       }),
-      POST: nurAdmin(async (req) => {
+      POST: nurInventurAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = invFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -603,7 +668,7 @@ const server = Bun.serve({
 
     "/api/inventar/:id": {
       // Ganzes Team: nur den gezählten Ist-Bestand aktualisieren.
-      PATCH: nurTeam(async (req) => {
+      PATCH: nurInventur(async (req) => {
         const b = await req.json().catch(() => null);
         const menge = Number(b?.menge);
         if (!Number.isFinite(menge) || menge < 0) {
@@ -618,7 +683,7 @@ const server = Bun.serve({
         return Response.json({ id: req.params.id, menge });
       }),
       // Nur Admin: Artikel umbenennen, Bereich/Einheit/Soll/Notiz ändern.
-      PUT: nurAdmin(async (req) => {
+      PUT: nurInventurAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = invFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -629,7 +694,7 @@ const server = Bun.serve({
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json({ id: req.params.id, ...daten });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurInventurAdmin(async (req) => {
         const r = await lauf("DELETE FROM inventar WHERE id = ?", req.params.id);
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
@@ -639,7 +704,7 @@ const server = Bun.serve({
     // ---- Schichtplanung (Admin, v1): Vorlage einfügen, Slots pflegen, Team zuweisen ----
     "/api/schichten": {
       // ?von=&bis= liefert eine ganze Woche, ?datum= einen einzelnen Tag.
-      GET: nurAdmin(async (req) => {
+      GET: nurSchicht(async (req) => {
         const q = new URL(req.url).searchParams;
         const von = q.get("von"), bis = q.get("bis");
         // Anzeige-Reihenfolge folgt der Vorlage (Regel-Sortierung); Rest hinten an.
@@ -665,7 +730,7 @@ const server = Bun.serve({
           await alle(`${sql} WHERE s.datum = ? ORDER BY ${reihung}`, datum),
         );
       }),
-      POST: nurAdmin(async (req) => {
+      POST: nurSchicht(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = schichtFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -683,7 +748,7 @@ const server = Bun.serve({
 
     // Fehlende Schichten aus den wiederkehrenden Regeln erzeugen (Tag oder Zeitraum).
     "/api/schichten/generieren": {
-      POST: nurAdmin(async (req) => {
+      POST: nurSchicht(async (req) => {
         const b = await req.json().catch(() => null);
         const von = text(b?.von, 10), bis = text(b?.bis, 10) || von;
         if (!res.istDatum(von) || !res.istDatum(bis) || bis < von) {
@@ -695,10 +760,10 @@ const server = Bun.serve({
 
     // ---- Wiederkehrende Schicht-Regeln (Admin) ----
     "/api/schicht-regeln": {
-      GET: nurAdmin(async () =>
+      GET: nurSchicht(async () =>
         Response.json(await alle("SELECT * FROM schicht_regeln ORDER BY sortierung, von, rolle")),
       ),
-      POST: nurAdmin(async (req) => {
+      POST: nurSchicht(async (req) => {
         const daten = regelFelder(await req.json().catch(() => null));
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
         if (!(await rolleImKatalog(daten.rolle))) {
@@ -716,7 +781,7 @@ const server = Bun.serve({
 
     // Reihenfolge der Vorlage per Drag & Drop: Array von Regel-IDs = neue Sortierung.
     "/api/schicht-regeln-reihenfolge": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurSchicht(async (req) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
@@ -727,7 +792,7 @@ const server = Bun.serve({
       }),
     },
     "/api/schicht-regeln/:id": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurSchicht(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = regelFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -742,7 +807,7 @@ const server = Bun.serve({
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json({ id: req.params.id, ...daten, aktiv });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurSchicht(async (req) => {
         // Bereits erzeugte Schichten bleiben stehen – nur die Regel verschwindet.
         const r = await lauf("DELETE FROM schicht_regeln WHERE id = ?", req.params.id);
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
@@ -754,13 +819,11 @@ const server = Bun.serve({
       // Zuweisung per Drag & Drop: mitarbeiter_id setzen oder (null) lösen.
       // Regeln: passende Rolle (Admins überall), Slot muss frei sein,
       // und dieselbe Person nie doppelt in überlappenden Zeitfenstern.
-      PATCH: nurAdmin(async (req) => {
+      PATCH: nurSchicht(async (req) => {
         const b = await req.json().catch(() => ({}));
         const mid = b?.mitarbeiter_id ?? null;
         if (mid !== null) {
-          const m = await eins<Mitarbeiter>(
-            "SELECT id, name, role, pin, admin FROM mitarbeiter WHERE id = ?", mid,
-          );
+          const m = await mitarbeiterMitCaps(mid);
           if (!m) return Response.json({ fehler: "Mitarbeiter unbekannt" }, { status: 400 });
           const slot = await eins<{ datum: string; rolle: string; von: string; bis: string; mitarbeiter_id: string | null }>(
             "SELECT datum, rolle, von, bis, mitarbeiter_id FROM schichten WHERE id = ?", req.params.id,
@@ -804,7 +867,7 @@ const server = Bun.serve({
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json({ id: req.params.id, mitarbeiter_id: mid });
       }),
-      PUT: nurAdmin(async (req) => {
+      PUT: nurSchicht(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = schichtFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -818,7 +881,7 @@ const server = Bun.serve({
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return Response.json({ id: req.params.id, ...daten });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurSchicht(async (req) => {
         const r = await lauf("DELETE FROM schichten WHERE id = ?", req.params.id);
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         return new Response(null, { status: 204 });
@@ -827,7 +890,7 @@ const server = Bun.serve({
 
     // ---- Feier-Anfragen ----
     "/api/anfragen": {
-      GET: nurTeam(async () =>
+      GET: nurReserv(async () =>
         Response.json(await alle("SELECT * FROM anfragen ORDER BY erstellt DESC LIMIT 200")),
       ),
       POST: async (req) => {
@@ -861,33 +924,99 @@ const server = Bun.serve({
       },
     },
 
-    // ---- Terminal: PIN-Login – identifiziert und setzt das Session-Cookie ----
+    // ---- Session: Login läuft ausschließlich über Passkeys (unten); hier nur Status & Logout ----
     "/api/session": {
-      POST: async (req) => {
-        const { pin } = (await req.json().catch(() => ({}))) as { pin?: string };
-        const emp = await byPin(String(pin ?? ""));
-        if (!emp) return Response.json({ fehler: "unbekannt" }, { status: 401 });
-        const last = await lastEvent(emp.id);
-        const clockedIn = last?.type === "in";
-        return Response.json(
-          {
-            id: emp.id, name: emp.name, role: emp.role, pin: emp.pin,
-            admin: !!emp.admin, clockedIn, since: clockedIn ? last!.ts : null,
-            // Vergessenes Ausstempeln? Muss vor allem anderen geklärt werden.
-            klaerung: await klaerungFuer(emp.id, last),
-          },
-          { headers: { "Set-Cookie": sessionCookie(tokenFuer(emp.id)) } },
-        );
+      // Terminal fragt beim Laden: Bin ich noch angemeldet? (inkl. Schichtstatus/Klärung)
+      GET: async (req) => {
+        const ich = await wer(req);
+        if (!ich) return Response.json({ fehler: "nicht angemeldet" }, { status: 401 });
+        return Response.json(await loginPayload(ich));
       },
       DELETE: () =>
         new Response(null, { status: 204, headers: { "Set-Cookie": logoutCookie() } }),
+    },
+
+    // ---- Passkey-Status: Bootstrap nur, solange niemand einen Passkey hat ----
+    "/api/passkey/status": async () =>
+      Response.json({ bootstrap: await passkey.istBootstrap() }),
+
+    // ---- Einladung ansehen (öffentlich, für den Begrüßungs-Screen) ----
+    "/api/einladung/:code": async (req) => {
+      const erg = await passkey.einladungPruefen(req.params.code);
+      if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 404 });
+      return Response.json({ name: erg.wert.name, vorname: erg.wert.vorname, role: erg.wert.role });
+    },
+
+    // ---- Passkey: Konto erstellen – Bootstrap (allererster) oder per Einladung ----
+    "/api/passkey/registrierung/optionen": {
+      POST: async (req) => {
+        const b = await req.json().catch(() => ({}));
+        const einladung = text(b?.einladung, 64);
+        let erg;
+        if (einladung) {
+          erg = await passkey.einladungOptionen(req, einladung);
+        } else {
+          const vorname = text(b?.vorname, 60);
+          if (!vorname) return Response.json({ fehler: "Bitte einen Vornamen angeben." }, { status: 400 });
+          erg = await passkey.bootstrapOptionen(req, vorname, text(b?.nachname, 60));
+        }
+        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 409 });
+        return Response.json(erg.wert.optionen);
+      },
+    },
+    "/api/passkey/registrierung/abschluss": {
+      POST: async (req) => {
+        const b = await req.json().catch(() => null);
+        const erg = await passkey.registrierungAbschliessen(req, b);
+        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
+        const emp = await mitarbeiterMitCaps(erg.wert);
+        return Response.json(await loginPayload(emp!), {
+          headers: { "Set-Cookie": sessionCookie(tokenFuer(erg.wert)) },
+        });
+      },
+    },
+
+    // ---- Passkey: Anmelden (ohne Benutzername, der Passkey kennt die Person) ----
+    "/api/passkey/login/optionen": {
+      POST: async (req) => Response.json(await passkey.loginOptionen(req)),
+    },
+    "/api/passkey/login/abschluss": {
+      POST: async (req) => {
+        const b = await req.json().catch(() => null);
+        const erg = await passkey.loginAbschliessen(req, b);
+        if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 401 });
+        const emp = await mitarbeiterMitCaps(erg.wert.id);
+        return Response.json(await loginPayload(emp!), {
+          headers: { "Set-Cookie": sessionCookie(tokenFuer(erg.wert.id)) },
+        });
+      },
+    },
+
+    // ---- Einladungslink für eine Person erstellen (ersetzt eine offene Einladung) ----
+    "/api/mitarbeiter/:id/einladung": {
+      POST: nurTeamAdmin(async (req) => {
+        const m = await eins<Mitarbeiter>(`SELECT ${MA_COLS} FROM mitarbeiter WHERE id = ?`, req.params.id);
+        if (!m) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        const code = randomUUID().replace(/-/g, "").slice(0, 20);
+        await lauf("DELETE FROM einladungen WHERE mitarbeiter_id = ? AND benutzt IS NULL", m.id);
+        await lauf(
+          "INSERT INTO einladungen (code, mitarbeiter_id, erstellt, gueltig_bis, benutzt) VALUES (?, ?, ?, ?, NULL)",
+          code, m.id, Date.now(), Date.now() + 7 * 86400000,
+        );
+        const basis = req.headers.get("origin") ?? new URL(req.url).origin;
+        return Response.json({ code, url: `${basis}/terminal?einladung=${code}`, gueltigTage: 7 }, { status: 201 });
+      }),
     },
 
     // ---- Wer bin ich? (Dashboard fragt beim Laden) ----
     "/api/me": async (req) => {
       const ich = await wer(req);
       if (!ich) return Response.json({ fehler: "nicht angemeldet" }, { status: 401 });
-      return Response.json({ id: ich.id, name: ich.name, role: ich.role, admin: !!ich.admin });
+      return Response.json({
+        id: ich.id, name: ich.name, vorname: ich.vorname, nachname: ich.nachname,
+        role: ich.role, caps: ich.caps ?? [],
+        admin: hatCap(ich, "team.admin") || (ich.caps ?? []).includes("*"),
+      });
     },
 
     // ---- Meine Zeiten: eigene Stempel-Sitzungen ansehen (nur lesend) ----
@@ -900,13 +1029,13 @@ const server = Bun.serve({
 
     // ---- Zeiten korrigieren: nur Admin, für beliebige Mitarbeiter ----
     "/api/zeiten/:mitarbeiterId": {
-      GET: nurAdmin(async (req) => {
+      GET: nurZeitenAdmin(async (req) => {
         const q = new URL(req.url).searchParams;
         const from = Number(q.get("from") ?? 0);
         const to = Number(q.get("to") ?? Date.now() + 1);
         return Response.json(await sitzungenFuer(req.params.mitarbeiterId, from, to));
       }),
-      POST: nurAdmin(async (req) => {
+      POST: nurZeitenAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const start = Number(b?.start), end = Number(b?.end);
         if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
@@ -914,7 +1043,7 @@ const server = Bun.serve({
         }
         return Response.json(await sitzungAnlegen(req.params.mitarbeiterId, start, end), { status: 201 });
       }),
-      PUT: nurAdmin(async (req) => {
+      PUT: nurZeitenAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const start = Number(b?.start);
         const end = b?.end == null ? null : Number(b.end);
@@ -926,7 +1055,7 @@ const server = Bun.serve({
         }
         return Response.json({ ok: true });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurZeitenAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         if (!b?.inId) return Response.json({ fehler: "inId fehlt" }, { status: 400 });
         if (!(await sitzungLoeschen(req.params.mitarbeiterId, b.inId, b.outId ?? null))) {
@@ -937,12 +1066,10 @@ const server = Bun.serve({
     },
 
     // ---- Terminal: ein-/ausstempeln (toggelt anhand des letzten Events) ----
-    // Ist eine Schicht geplant, gilt: frühestens 2 h vor Beginn rein, spätestens 2 h nach Ende raus.
+    // Läuft über die eigene Session (Passkey-Login). Ist eine Schicht geplant,
+    // gilt: frühestens 2 h vor Beginn rein, spätestens 2 h nach Ende raus.
     "/api/stamp": {
-      POST: async (req) => {
-        const { pin } = await req.json();
-        const emp = await byPin(String(pin ?? ""));
-        if (!emp) return Response.json({ error: "unbekannt" }, { status: 404 });
+      POST: nurTeam(async (req, emp) => {
         const last = await lastEvent(emp.id);
         const type: "in" | "out" = last?.type === "in" ? "out" : "in";
         const ts = Date.now();
@@ -974,7 +1101,7 @@ const server = Bun.serve({
           randomUUID(), emp.id, type, ts,
         );
         return Response.json({ name: emp.name, type, ts });
-      },
+      }),
     },
 
     // ---- Klärung: vergessenes Ausstempeln nachtragen (schließt die offene Sitzung) ----
@@ -1004,7 +1131,7 @@ const server = Bun.serve({
     },
 
     // ---- Dashboard (Admin): aktueller Präsenz-Status aller Mitarbeiter ----
-    "/api/status": nurAdmin(async () => {
+    "/api/status": nurAuswertung(async () => {
       const rows = await Promise.all(
         (await listAll()).map(async (m) => {
           const last = await lastEvent(m.id);
@@ -1022,7 +1149,7 @@ const server = Bun.serve({
     }),
 
     // ---- Dashboard (Admin): Zeiten pro Mitarbeiter im Fenster [from, to) ----
-    "/api/report": nurAdmin(async (req) => {
+    "/api/report": nurAuswertung(async (req) => {
       const q = new URL(req.url).searchParams;
       const from = Number(q.get("from") ?? 0);
       const to = Number(q.get("to") ?? Date.now());
@@ -1046,7 +1173,7 @@ const server = Bun.serve({
     }),
 
     // ---- Website-Karte: pflegen nur Admin (die Website liest direkt aus der DB) ----
-    "/api/karte": nurAdmin(async () => {
+    "/api/karte": nurKarteAdmin(async () => {
       const gruppen = await alle("SELECT * FROM karte_gruppen ORDER BY sortierung, titel");
       const positionen = await alle("SELECT * FROM karte_positionen ORDER BY sortierung, name");
       const gerichte = await alle("SELECT id, name FROM gerichte ORDER BY name");
@@ -1054,7 +1181,7 @@ const server = Bun.serve({
     }),
 
     "/api/karte/gruppen": {
-      POST: nurAdmin(async (req) => {
+      POST: nurKarteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = karteGruppeFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -1069,7 +1196,7 @@ const server = Bun.serve({
       }),
     },
     "/api/karte/gruppen/:id": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = karteGruppeFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -1081,7 +1208,7 @@ const server = Bun.serve({
         karteInvalidieren();
         return Response.json({ id: req.params.id, ...daten });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurKarteAdmin(async (req) => {
         const r = await lauf("DELETE FROM karte_gruppen WHERE id = ?", req.params.id);
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         karteInvalidieren();
@@ -1090,7 +1217,7 @@ const server = Bun.serve({
     },
 
     "/api/karte/positionen": {
-      POST: nurAdmin(async (req) => {
+      POST: nurKarteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = await kartePositionFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -1130,7 +1257,7 @@ const server = Bun.serve({
       }),
     },
     "/api/karte/positionen/:id": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = await kartePositionFelder(b);
         if ("fehler" in daten) return Response.json(daten, { status: 400 });
@@ -1144,7 +1271,7 @@ const server = Bun.serve({
         karteInvalidieren();
         return Response.json({ id: req.params.id, ...daten });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurKarteAdmin(async (req) => {
         const r = await lauf("DELETE FROM karte_positionen WHERE id = ?", req.params.id);
         if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         karteInvalidieren();
@@ -1154,7 +1281,7 @@ const server = Bun.serve({
 
     // Reihenfolge der Positionen (innerhalb einer Gruppe) bzw. der Gruppen per Drag & Drop.
     "/api/karte/positionen-reihenfolge": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
@@ -1166,7 +1293,7 @@ const server = Bun.serve({
       }),
     },
     "/api/karte/gruppen-reihenfolge": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurKarteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
         if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
@@ -1180,8 +1307,8 @@ const server = Bun.serve({
 
     // ---- Rezepte (Komponenten): lesen fürs Team, pflegen nur Admin ----
     "/api/rezepte": {
-      GET: nurTeam(async () => Response.json(await kueche.rezepteLaden())),
-      POST: nurAdmin(async (req) => {
+      GET: nurRezepte(async () => Response.json(await kueche.rezepteLaden())),
+      POST: nurRezepteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const erg = await kueche.rezeptSpeichern(rezeptBody(b));
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
@@ -1189,13 +1316,13 @@ const server = Bun.serve({
       }),
     },
     "/api/rezepte/:id": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurRezepteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const erg = await kueche.rezeptSpeichern(rezeptBody(b), req.params.id);
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
         return Response.json({ id: erg.wert });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurRezepteAdmin(async (req) => {
         const erg = await kueche.rezeptLoeschen(req.params.id);
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 409 });
         return new Response(null, { status: 204 });
@@ -1204,8 +1331,8 @@ const server = Bun.serve({
 
     // ---- Gerichte (Karte): Verfügbarkeit fürs Team, Pflege nur Admin ----
     "/api/gerichte": {
-      GET: nurTeam(async () => Response.json(await kueche.gerichteLaden())),
-      POST: nurAdmin(async (req) => {
+      GET: nurRezepte(async () => Response.json(await kueche.gerichteLaden())),
+      POST: nurRezepteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const erg = await kueche.gerichtSpeichern(gerichtBody(b));
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
@@ -1213,7 +1340,7 @@ const server = Bun.serve({
       }),
     },
     "/api/gerichte/:id": {
-      PUT: nurAdmin(async (req) => {
+      PUT: nurRezepteAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const daten = gerichtBody(b);
         const erg = await kueche.gerichtSpeichern(daten, req.params.id);
@@ -1226,7 +1353,7 @@ const server = Bun.serve({
         karteInvalidieren();
         return Response.json({ id: erg.wert });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurRezepteAdmin(async (req) => {
         if (!(await kueche.gerichtLoeschen(req.params.id))) {
           return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
         }
@@ -1237,7 +1364,7 @@ const server = Bun.serve({
 
     // ---- Verkauf/Zubereitung buchen: zieht Zutaten vom Inventar ab ----
     "/api/gerichte/:id/kochen": {
-      POST: nurTeam(async (req) => {
+      POST: nurRezepte(async (req) => {
         const b = await req.json().catch(() => ({}));
         const erg = await kueche.kochen(req.params.id, Number(b?.portionen ?? 1));
         if (!erg.ok) return Response.json({ fehler: erg.fehler }, { status: 400 });
@@ -1247,25 +1374,43 @@ const server = Bun.serve({
     },
 
     // ---- Rollen-Katalog: lesen fürs Team, pflegen nur Admin ----
+    // Rollen = Capability-Bundles. GET liefert Rollen + Katalog (fürs ganze Team lesbar).
     "/api/rollen": {
       GET: nurTeam(async () =>
-        Response.json(
-          (await alle<{ name: string }>("SELECT name FROM rollen ORDER BY name")).map((r) => r.name),
-        ),
+        Response.json({
+          rollen: (await alle<{ name: string; capabilities: string }>(
+            "SELECT name, capabilities FROM rollen ORDER BY name",
+          )).map((r) => ({ name: r.name, caps: r.capabilities.split(",").map((c) => c.trim()).filter(Boolean) })),
+          katalog: CAPABILITIES,
+        }),
       ),
-      POST: nurAdmin(async (req) => {
+      POST: nurTeamAdmin(async (req) => {
         const b = await req.json().catch(() => null);
         const name = text(b?.name, 40);
         if (!name) return Response.json({ fehler: "Bitte einen Rollennamen angeben." }, { status: 400 });
         if (await eins("SELECT 1 AS x FROM rollen WHERE lower(name) = lower(?)", name)) {
           return Response.json({ fehler: "Diese Rolle gibt es schon." }, { status: 409 });
         }
-        await lauf("INSERT INTO rollen (name) VALUES (?)", name);
-        return Response.json({ name }, { status: 201 });
+        const caps = capsAusBody(b?.caps);
+        await lauf("INSERT INTO rollen (name, capabilities) VALUES (?, ?)", name, caps.join(","));
+        return Response.json({ name, caps }, { status: 201 });
       }),
     },
     "/api/rollen/:name": {
-      DELETE: nurAdmin(async (req) => {
+      // Fähigkeiten-Bundle einer Rolle setzen.
+      PUT: nurTeamAdmin(async (req, ich) => {
+        const name = decodeURIComponent(req.params.name);
+        const b = await req.json().catch(() => null);
+        const caps = capsAusBody(b?.caps);
+        // Schutz vor Aussperren: die eigene Rolle darf team.admin nicht verlieren.
+        if (ich.role === name && !caps.includes("*") && !caps.includes("team.admin")) {
+          return Response.json({ fehler: "Deine eigene Rolle braucht „Team verwalten“ – sonst sperrst du dich aus." }, { status: 409 });
+        }
+        const r = await lauf("UPDATE rollen SET capabilities = ? WHERE name = ?", caps.join(","), name);
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return Response.json({ name, caps });
+      }),
+      DELETE: nurTeamAdmin(async (req) => {
         const name = decodeURIComponent(req.params.name);
         if (await eins("SELECT 1 AS x FROM mitarbeiter WHERE role = ?", name)) {
           return Response.json(
@@ -1279,60 +1424,178 @@ const server = Bun.serve({
       }),
     },
 
-    // ---- Team-CRUD (Admin) ----
+    // ---- Abendführung: Ablauf-Checklisten ----
+    "/api/ablauf": nurTeam(async (req) => {
+      const q = new URL(req.url).searchParams;
+      const prozess = q.get("prozess");
+      const datum = q.get("datum") ?? res.alsDatum(new Date());
+      if (!ablauf.istProzess(prozess)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
+      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await ablauf.tag(prozess, datum));
+    }),
+    "/api/ablauf/status": nurTeam(async (req) => {
+      const datum = new URL(req.url).searchParams.get("datum") ?? res.alsDatum(new Date());
+      if (!res.istDatum(datum)) return Response.json({ fehler: "Ungültiges Datum" }, { status: 400 });
+      return Response.json(await ablauf.status(datum));
+    }),
+    "/api/ablauf/erledigt": {
+      POST: nurTeam(async (req, ich) => {
+        const b = await req.json().catch(() => null);
+        const aufgabeId = text(b?.aufgabe_id, 40);
+        const datum = text(b?.datum, 10) || res.alsDatum(new Date());
+        if (!aufgabeId || !res.istDatum(datum)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
+        await ablauf.erledigtSetzen(aufgabeId, datum, ich.id);
+        return Response.json({ ok: true });
+      }),
+      DELETE: nurTeam(async (req) => {
+        const b = await req.json().catch(() => null);
+        const aufgabeId = text(b?.aufgabe_id, 40);
+        const datum = text(b?.datum, 10) || res.alsDatum(new Date());
+        if (!aufgabeId || !res.istDatum(datum)) return Response.json({ fehler: "Ungültige Angabe" }, { status: 400 });
+        await ablauf.erledigtLoeschen(aufgabeId, datum);
+        return Response.json({ ok: true });
+      }),
+    },
+    // Katalog pflegen (Admin)
+    "/api/ablauf/aufgaben": {
+      POST: nurAblaeufe(async (req) => {
+        const b = await req.json().catch(() => null);
+        const prozess = b?.prozess;
+        const titel = text(b?.titel, 200);
+        if (!ablauf.istProzess(prozess)) return Response.json({ fehler: "Unbekannter Prozess" }, { status: 400 });
+        if (!titel) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
+        const zeile = {
+          id: randomUUID(), prozess, gruppe: text(b?.gruppe, 60) || null,
+          titel, info: text(b?.info, 1000) || null,
+          sortierung: await ablauf.naechsteSortierung(prozess), aktiv: 1,
+        };
+        await lauf(
+          "INSERT INTO ablauf_aufgaben (id, prozess, gruppe, titel, info, sortierung, aktiv) VALUES (?, ?, ?, ?, ?, ?, 1)",
+          zeile.id, zeile.prozess, zeile.gruppe, zeile.titel, zeile.info, zeile.sortierung,
+        );
+        return Response.json(zeile, { status: 201 });
+      }),
+    },
+    // Reihenfolge innerhalb eines Prozesses: Array von Aufgaben-IDs = neue Sortierung.
+    "/api/ablauf/aufgaben-reihenfolge": {
+      PUT: nurAblaeufe(async (req) => {
+        const b = await req.json().catch(() => null);
+        const ids = Array.isArray(b?.ids) ? b.ids.filter((x: unknown) => typeof x === "string") : [];
+        if (!ids.length) return Response.json({ fehler: "ids fehlen" }, { status: 400 });
+        for (let i = 0; i < ids.length; i++) {
+          await lauf("UPDATE ablauf_aufgaben SET sortierung = ? WHERE id = ?", i, ids[i]);
+        }
+        return Response.json({ ok: true });
+      }),
+    },
+    "/api/ablauf/aufgaben/:id": {
+      PUT: nurAblaeufe(async (req) => {
+        const b = await req.json().catch(() => null);
+        const titel = text(b?.titel, 200);
+        if (!titel) return Response.json({ fehler: "Titel ist Pflicht" }, { status: 400 });
+        const aktiv = b?.aktiv === 0 || b?.aktiv === false ? 0 : 1;
+        const r = await lauf(
+          "UPDATE ablauf_aufgaben SET gruppe = ?, titel = ?, info = ?, aktiv = ? WHERE id = ?",
+          text(b?.gruppe, 60) || null, titel, text(b?.info, 1000) || null, aktiv, req.params.id,
+        );
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return Response.json({ ok: true });
+      }),
+      DELETE: nurAblaeufe(async (req) => {
+        const r = await lauf("DELETE FROM ablauf_aufgaben WHERE id = ?", req.params.id);
+        if (r.changes === 0) return Response.json({ fehler: "nicht gefunden" }, { status: 404 });
+        return new Response(null, { status: 204 });
+      }),
+    },
+
+    // ---- Team-CRUD (Admin): Identität = Vorname + Nachname, Login = Passkey ----
     "/api/mitarbeiter": {
-      GET: nurAdmin(async () => Response.json(await listAll())),
-      POST: nurAdmin(async (req) => {
-        const { name, role, pin: rawPin } = await req.json();
-        if (!name?.trim() || !role?.trim()) {
-          return Response.json({ error: "Name und Rolle sind Pflicht" }, { status: 400 });
+      GET: nurTeam(async () => {
+        const team = await listAll();
+        // Passkey-Status je Person (Team-Tab) + Fähigkeiten der Rolle (Schichtplan-Chips).
+        const mitKeys = new Set(
+          (await alle<{ mitarbeiter_id: string }>("SELECT DISTINCT mitarbeiter_id FROM passkeys"))
+            .map((r) => r.mitarbeiter_id),
+        );
+        const capsJeRolle = new Map(
+          (await alle<{ name: string; capabilities: string }>("SELECT name, capabilities FROM rollen"))
+            .map((r) => [r.name, r.capabilities.split(",").map((c) => c.trim()).filter(Boolean)]),
+        );
+        return Response.json(team.map((m) => {
+          const caps = capsJeRolle.get(m.role) ?? [];
+          if (m.admin && !caps.includes("*")) caps.push("*");
+          return { ...m, caps, hatPasskey: mitKeys.has(m.id) };
+        }));
+      }),
+      POST: nurTeamAdmin(async (req) => {
+        const { vorname, nachname, role, ma_code, personalnr, soll_std } = await req.json();
+        const vn = (vorname ?? "").toString().trim();
+        const nn = (nachname ?? "").toString().trim();
+        if (!vn || !role?.trim()) {
+          return Response.json({ error: "Vorname und Rolle sind Pflicht" }, { status: 400 });
         }
         if (!(await rolleImKatalog(role.trim()))) {
           return Response.json({ error: "Unbekannte Rolle – bitte aus dem Katalog wählen" }, { status: 400 });
         }
-        let pin = (rawPin ?? "").toString().trim();
-        if (pin === "") pin = await allocatePin();
-        else if (!isValidPin(pin)) {
-          return Response.json({ error: "PIN muss 4 Ziffern sein (0009 reserviert)" }, { status: 400 });
-        }
-        if (await byPin(pin)) return Response.json({ error: "PIN bereits vergeben" }, { status: 409 });
-        const row: Mitarbeiter = { id: randomUUID(), name: name.trim(), role: role.trim(), pin, admin: 0 };
+        const code = leerZuNull(ma_code);
+        const pnr = leerZuNull(personalnr);
+        const soll = parseSoll(soll_std);
+        if (soll === false) return Response.json({ error: "Soll-Wochenstunden muss eine Zahl ≥ 0 sein" }, { status: 400 });
+        if (code && (await byMaCode(code))) return Response.json({ error: "MA-Code bereits vergeben" }, { status: 409 });
+        if (pnr && (await byPersonalnr(pnr))) return Response.json({ error: "Personal-Nr. bereits vergeben" }, { status: 409 });
+
+        const row: Mitarbeiter = {
+          id: randomUUID(), name: nn ? `${vn} ${nn}` : vn, vorname: vn, nachname: nn || null,
+          role: role.trim(), admin: 0, ma_code: code, personalnr: pnr, soll_std: soll,
+        };
         await lauf(
-          "INSERT INTO mitarbeiter (id, name, role, pin, admin) VALUES (?, ?, ?, ?, 0)",
-          row.id, row.name, row.role, row.pin,
+          "INSERT INTO mitarbeiter (id, name, vorname, nachname, role, admin, ma_code, personalnr, soll_std) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
+          row.id, row.name, row.vorname, row.nachname, row.role, row.ma_code, row.personalnr, row.soll_std,
         );
-        return Response.json(row, { status: 201 });
+        return Response.json({ ...row, hatPasskey: false }, { status: 201 });
       }),
     },
 
     "/api/mitarbeiter/:id": {
-      PUT: nurAdmin(async (req) => {
-        const { name, role, pin } = await req.json();
+      PUT: nurTeamAdmin(async (req) => {
+        const { vorname, nachname, role, ma_code, personalnr, soll_std } = await req.json();
         const { id } = req.params;
-        if (!name?.trim() || !role?.trim()) {
-          return Response.json({ error: "Name und Rolle sind Pflicht" }, { status: 400 });
+        const vn = (vorname ?? "").toString().trim();
+        const nn = (nachname ?? "").toString().trim();
+        if (!vn || !role?.trim()) {
+          return Response.json({ error: "Vorname und Rolle sind Pflicht" }, { status: 400 });
         }
         if (!(await rolleImKatalog(role.trim()))) {
           return Response.json({ error: "Unbekannte Rolle – bitte aus dem Katalog wählen" }, { status: 400 });
         }
-        const p = (pin ?? "").toString().trim();
-        if (!isValidPin(p)) {
-          return Response.json({ error: "PIN muss 4 Ziffern sein (0009 reserviert)" }, { status: 400 });
-        }
-        const clash = await byPin(p);
-        if (clash && clash.id !== id) {
-          return Response.json({ error: "PIN bereits vergeben" }, { status: 409 });
-        }
+        const code = leerZuNull(ma_code);
+        const pnr = leerZuNull(personalnr);
+        const soll = parseSoll(soll_std);
+        if (soll === false) return Response.json({ error: "Soll-Wochenstunden muss eine Zahl ≥ 0 sein" }, { status: 400 });
+        const codeClash = code ? await byMaCode(code) : null;
+        if (codeClash && codeClash.id !== id) return Response.json({ error: "MA-Code bereits vergeben" }, { status: 409 });
+        const pnrClash = pnr ? await byPersonalnr(pnr) : null;
+        if (pnrClash && pnrClash.id !== id) return Response.json({ error: "Personal-Nr. bereits vergeben" }, { status: 409 });
+
+        const name = nn ? `${vn} ${nn}` : vn;
         const res = await lauf(
-          "UPDATE mitarbeiter SET name = ?, role = ?, pin = ? WHERE id = ?",
-          name.trim(), role.trim(), p, id,
+          "UPDATE mitarbeiter SET name = ?, vorname = ?, nachname = ?, role = ?, ma_code = ?, personalnr = ?, soll_std = ? WHERE id = ?",
+          name, vn, nn || null, role.trim(), code, pnr, soll, id,
         );
         if (res.changes === 0) return Response.json({ error: "nicht gefunden" }, { status: 404 });
-        return Response.json({ id, name: name.trim(), role: role.trim(), pin: p });
+        return Response.json({ id, name, vorname: vn, nachname: nn || null, role: role.trim(), ma_code: code, personalnr: pnr, soll_std: soll });
       }),
-      DELETE: nurAdmin(async (req) => {
+      DELETE: nurTeamAdmin(async (req) => {
         const res = await lauf("DELETE FROM mitarbeiter WHERE id = ?", req.params.id);
         if (res.changes === 0) return Response.json({ error: "nicht gefunden" }, { status: 404 });
+        return new Response(null, { status: 204 });
+      }),
+    },
+
+    // ---- Passkeys einer Person zurücksetzen (z. B. Gerät verloren) ----
+    "/api/mitarbeiter/:id/passkeys": {
+      DELETE: nurTeamAdmin(async (req) => {
+        await lauf("DELETE FROM passkeys WHERE mitarbeiter_id = ?", req.params.id);
         return new Response(null, { status: 204 });
       }),
     },

@@ -42,6 +42,31 @@ ${baseCss}
   .loginfoot{margin-top:auto; padding-top:2.5vh; font-size:12px; color:var(--grey); text-align:center;}
   .loginfoot a{color:var(--grey);}
 
+  /* ---------- Passkey-Login ---------- */
+  .pk-bereich{display:flex; flex-direction:column; align-items:center; width:min(420px,88vw); margin-top:1vh;}
+  .pk-anmelden{
+    display:flex; align-items:center; justify-content:center; gap:12px; width:100%;
+    border:none; border-radius:18px; padding:22px; background:var(--wald); color:#fff;
+    font-family:var(--sans); font-size:clamp(17px,4.6vw,21px); font-weight:600; cursor:pointer;
+    letter-spacing:.3px; box-shadow:0 10px 28px -14px rgba(60,74,59,.55);
+  }
+  .pk-anmelden:active{background:#2C382C;}
+  .pk-anmelden svg{width:26px; height:26px; flex:none;}
+  .pk-anmelden[disabled]{opacity:.6;}
+  .pk-neu{
+    margin-top:14px; width:100%; background:none; border:1.5px solid var(--line); border-radius:18px;
+    padding:16px; font-family:var(--sans); font-size:clamp(14px,3.8vw,16px); color:var(--clay); cursor:pointer;
+  }
+  .pk-fehler{min-height:20px; margin-top:12px; font-size:14px; color:var(--rot); text-align:center;}
+  .pk-form{width:100%; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:24px 22px;}
+  .pk-form-titel{font-family:var(--serif); font-size:clamp(22px,5.4vw,28px); color:var(--wald); text-align:center; margin-bottom:8px;}
+  .pk-form-text{font-size:14px; color:var(--clay); text-align:center; margin:0 0 18px; line-height:1.5;}
+  .pk-form input{
+    width:100%; margin-bottom:12px; padding:15px 16px; border:1.5px solid var(--line); border-radius:14px;
+    font-size:17px; font-family:var(--sans); background:var(--creme); color:var(--ink);
+  }
+  .pk-form input:focus{outline:none; border-color:var(--wald-hell);}
+
   /* ---------- HOME (nach Login) ---------- */
   .topbar{display:flex; align-items:center; gap:12px; padding:14px 18px; background:var(--card); border-bottom:1px solid var(--line);}
   .topbar img{height:38px; width:auto;}
@@ -72,6 +97,81 @@ ${baseCss}
     font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--grey); font-weight:500;
   }
   .tiles-trenner::before, .tiles-trenner::after{content:""; flex:1; height:1px; background:var(--line);}
+
+  /* ---------- Reservierungs-Hintergrund (Platzhalter für den grafischen Tischplan) ---------- */
+  #screen-home{position:relative;}
+  #tischplan-bg{position:absolute; left:0; right:0; top:66px; bottom:0; z-index:0;
+    padding:14px 20px 40px; overflow:hidden; opacity:.55; pointer-events:none; -webkit-user-select:none; user-select:none;}
+  #tischplan-bg .tp-kopf{font-family:var(--serif); color:var(--wald); font-size:clamp(18px,4vw,22px); margin:2px 0 4px;}
+  #tischplan-bg .tp-kpi{font-size:13px; color:var(--clay); margin-bottom:10px;}
+  #tischplan-bg .tp-res{display:flex; gap:12px; align-items:baseline; padding:6px 2px; border-bottom:1px solid var(--line); font-size:14px; max-width:640px;}
+  #tischplan-bg .tp-zeit{font-family:var(--serif); color:var(--wald); min-width:52px;}
+  #tischplan-bg .tp-name{flex:1; color:var(--ink);} #tischplan-bg .tp-det{color:var(--grey); font-size:12.5px;}
+  #tischplan-bg .tp-leer{color:var(--grey); font-style:italic; padding:14px 2px;}
+  .home-front{position:relative; z-index:1; margin-top:30vh;}   /* (alt) */
+
+  /* ---------- Tischplan als Vollbild-Home + schlanke HuH-Leiste ---------- */
+  #screen-home.active{height:100vh; min-height:0; overflow:hidden; flex-direction:column;}
+  .huh-strip{display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--card); border-bottom:1px solid var(--line); flex:none;}
+  .huh-strip .hs-hallo{font-family:var(--serif); font-size:clamp(15px,3.5vw,19px); color:var(--wald); white-space:nowrap;}
+  .huh-strip .miniclock{font-variant-numeric:tabular-nums; font-size:14px; color:var(--clay); margin-left:auto;}
+  .huh-strip .hs-menu{background:var(--wald); color:#fff; border:none; border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer; font-family:var(--sans);}
+  .hs-aufbau{background:var(--amber); color:#fff; border:none; border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:var(--sans); white-space:nowrap;}
+  .tischplan-frame{flex:1; width:100%; border:0; display:block; background:var(--creme);}
+
+  /* Menü als Panel von rechts */
+  .menu-back{position:fixed; inset:0; z-index:45; background:rgba(34,38,31,.4); display:flex; justify-content:flex-end;}
+  .menu-karte{background:var(--creme); width:min(420px,92vw); height:100%; overflow-y:auto; padding:16px 16px calc(20px + env(safe-area-inset-bottom)); box-shadow:-16px 0 50px -20px rgba(0,0,0,.45);}
+  .mk-kopf{display:flex; align-items:center; margin-bottom:8px;}
+  .mk-kopf span{flex:1; font-family:var(--serif); font-size:20px; color:var(--wald);}
+  .mk-x{background:none; border:none; font-size:22px; color:var(--grey); cursor:pointer; line-height:1;}
+  .mk-titel{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--grey); margin:20px 0 8px;}
+
+  /* Aufbau-Banner + Prozess-Buttons auf dem Home */
+  .ablauf-banner{display:flex; align-items:center; gap:12px; background:var(--amber); color:#fff;
+    border-radius:14px; padding:13px 16px; margin-bottom:16px; cursor:pointer; box-shadow:0 10px 26px -14px rgba(176,85,58,.7);}
+  .ablauf-banner .b-txt{flex:1; font-weight:600;} .ablauf-banner .b-go{font-size:13px; opacity:.9; white-space:nowrap;}
+  .prozesse{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:0 0 18px;}
+  .proz{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 12px; text-align:center; cursor:pointer; transition:transform .06s;}
+  .proz:active{transform:scale(.97);} .proz.fertig{border-color:var(--wald-hell); background:#eef2ec;}
+  .proz .pt{font-family:var(--serif); font-size:clamp(16px,4vw,19px); color:var(--wald);}
+  .proz .pp{font-variant-numeric:tabular-nums; font-size:13px; color:var(--clay); margin-top:5px;}
+  .proz .pp.ok{color:var(--wald);}
+
+  /* Vorschlag-Overlay (direkt nach Login) */
+  .vorschlag-back{position:fixed; inset:0; z-index:40; background:rgba(34,38,31,.45); display:flex; align-items:center; justify-content:center; padding:6vw;}
+  .vorschlag-karte{background:var(--card); border-radius:22px; padding:30px 28px; width:min(460px,92vw); text-align:center; box-shadow:0 24px 60px -20px rgba(0,0,0,.5);}
+  .vk-titel{font-family:var(--serif); font-size:clamp(24px,6vw,32px); color:var(--wald); margin-bottom:8px;}
+  .vk-text{font-size:clamp(15px,3.6vw,17px); color:var(--clay); margin:0 0 22px;}
+  .vk-primary{display:block; width:100%; border:none; border-radius:16px; padding:18px; background:var(--wald); color:#fff; font-size:clamp(17px,4.6vw,20px); font-weight:600; cursor:pointer; font-family:var(--sans);}
+  .vk-secondary{display:block; width:100%; margin-top:12px; background:none; border:1px solid var(--line); border-radius:16px; padding:14px; color:var(--clay); font-size:15px; cursor:pointer; font-family:var(--sans);}
+
+  /* ---------- ABLAUF-SCREEN (Aufbau/Leerlauf/Abbau) ---------- */
+  #screen-ablauf .ablauf-fortschritt{font-variant-numeric:tabular-nums; font-size:16px; color:var(--wald); font-weight:600;}
+  .ablauf-body{flex:1; overflow-y:auto; padding:18px; max-width:720px; width:100%; margin:0 auto;}
+  .ab-gruppe{font-family:var(--mono,var(--sans)); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--grey); margin:18px 0 8px;}
+  .ab-gruppe:first-child{margin-top:0;}
+  .ab-task{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:10px; transition:opacity .15s;}
+  .ab-task .tt{font-size:clamp(16px,4vw,18px); color:var(--ink); display:flex; align-items:center; gap:10px;}
+  .ab-task.fertig{opacity:.5;} .ab-task.fertig .tt{text-decoration:line-through; color:var(--wald);}
+  .ab-task.kommt{opacity:.5;}
+  .ab-check{width:24px; height:24px; border-radius:50%; border:2px solid var(--line); flex:none; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px;}
+  .ab-task.fertig .ab-check{background:var(--wald); border-color:var(--wald);}
+  .ab-task.aktiv{border-color:var(--wald); box-shadow:0 10px 26px -16px rgba(60,74,59,.6);}
+  .ab-task.aktiv .ab-check{border-color:var(--wald);}
+  .ab-info{margin:12px 0 0; font-size:14.5px; color:var(--clay); line-height:1.5; background:var(--creme); border-radius:10px; padding:12px 14px;}
+  .ab-erledigt{display:block; width:100%; margin-top:14px; border:none; border-radius:12px; padding:16px; background:var(--wald); color:#fff; font-size:clamp(16px,4.4vw,19px); font-weight:600; cursor:pointer; font-family:var(--sans); letter-spacing:.3px;}
+  .ab-erledigt:active{background:#2f4a34;}
+  .ablauf-foot{padding:14px 18px calc(14px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--card); text-align:center;}
+  .ablauf-abbruch{background:none; border:1px solid var(--line); color:var(--rot); border-radius:12px; padding:12px 22px; font-size:15px; cursor:pointer; font-family:var(--sans);}
+
+  /* Rote Unterbrechen-Bestätigung */
+  .confirm-back{position:fixed; inset:0; z-index:60; background:rgba(154,59,52,.28); display:flex; align-items:center; justify-content:center; padding:6vw;}
+  .confirm-karte{background:var(--card); border:2px solid var(--rot); border-radius:22px; padding:30px 28px; width:min(480px,92vw); text-align:center; box-shadow:0 24px 60px -18px rgba(154,59,52,.55);}
+  .ck-titel{font-family:var(--serif); font-size:clamp(26px,6.5vw,36px); color:var(--rot); margin-bottom:10px;}
+  .ck-text{font-size:clamp(15px,3.6vw,17px); color:var(--ink); margin:0 0 24px; line-height:1.5;}
+  .ck-ja{display:block; width:100%; border:none; border-radius:16px; padding:18px; background:var(--rot); color:#fff; font-size:clamp(17px,4.6vw,20px); font-weight:700; cursor:pointer; font-family:var(--sans);}
+  .ck-nein{display:block; width:100%; margin-top:12px; background:var(--wald); color:#fff; border:none; border-radius:16px; padding:16px; font-size:16px; font-weight:600; cursor:pointer; font-family:var(--sans);}
 
   /* ---------- ENTSCHEIDUNG (nach Login) ---------- */
   #screen-entscheid{align-items:center; justify-content:center; padding:4vh 6vw; text-align:center;}
@@ -118,22 +218,37 @@ ${baseCss}
 </head>
 <body>
 
-<!-- ============ LOGIN ============ -->
+<!-- ============ LOGIN (Passkey) ============ -->
 <section id="screen-login" class="screen active">
   <img class="logo" src="/logo.png" alt="Hand aufs Herz">
   <div class="clockwrap">
     <div class="clock" id="bigClock">--:--<span class="sec">:--</span></div>
     <div class="date" id="bigDate">&nbsp;</div>
   </div>
-  <div class="prompt">Mit <b>4-stelligem PIN</b> anmelden</div>
-  <div class="dots" id="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-  <div class="pad" id="pad">
-    <div class="key" data-k="1">1</div><div class="key" data-k="2">2</div><div class="key" data-k="3">3</div>
-    <div class="key" data-k="4">4</div><div class="key" data-k="5">5</div><div class="key" data-k="6">6</div>
-    <div class="key" data-k="7">7</div><div class="key" data-k="8">8</div><div class="key" data-k="9">9</div>
-    <div class="key action clear" data-k="clear">Löschen</div><div class="key" data-k="0">0</div>
-    <div class="key action enter" data-k="enter">OK</div>
+
+  <div class="pk-bereich" id="pkStart">
+    <button class="pk-anmelden" id="btnPkLogin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8.5" cy="8.5" r="4.5"/><path d="M3 21c0-3.3 2.5-5.5 5.5-5.5S14 17.7 14 21"/>
+        <path d="M15 12.5l6-6M18.5 6l2.5 2.5M16.8 7.7l1.8 1.8"/></svg>
+      Mit Passkey anmelden
+    </button>
+    <div class="pk-fehler" id="pkFehler"></div>
+    <button class="pk-neu" id="btnPkNeuZeigen">Neu hier? Konto erstellen</button>
   </div>
+
+  <div class="pk-bereich" id="pkRegistrierung" style="display:none">
+    <div class="pk-form">
+      <div class="pk-form-titel">Konto erstellen</div>
+      <p class="pk-form-text">Einmal Name eintragen, dann sichert dein Gerät den Zugang (Fingerabdruck, Gesicht oder Geräte-Code).</p>
+      <input id="pkVorname" placeholder="Vorname" autocomplete="given-name" maxlength="60">
+      <input id="pkNachname" placeholder="Nachname" autocomplete="family-name" maxlength="60">
+      <div class="pk-fehler" id="pkRegFehler"></div>
+      <button class="pk-anmelden" id="btnPkRegistrieren">Passkey erstellen</button>
+      <button class="pk-neu" id="btnPkZurueck">← Zurück zur Anmeldung</button>
+    </div>
+  </div>
+
   <div class="loginfoot">Hand aufs Herz · Team-Terminal &nbsp;·&nbsp; <a href="/team">Team &amp; Zeiten</a></div>
 </section>
 
@@ -163,41 +278,79 @@ ${baseCss}
 
 <!-- ============ HOME (nach Login) ============ -->
 <section id="screen-home" class="screen">
-  <div class="topbar">
-    <img src="/logo.png" alt="Hand aufs Herz">
-    <div class="who" id="homeWho">Servus</div>
-    <div class="miniclock" id="homeClock">--:--:--</div>
-    <button class="btn-logout" id="btnLogout">Abmelden</button>
+  <!-- Schlanke HuH-Leiste über dem Tischplan -->
+  <div class="huh-strip">
+    <span class="hs-hallo" id="homeWho">Servus</span>
+    <button class="hs-aufbau" id="ablaufBanner" style="display:none"></button>
+    <span class="miniclock" id="homeClock">--:--:--</span>
+    <button class="hs-menu" id="btnMenu">☰ Menü</button>
   </div>
-  <div class="home-body">
-    <div class="statuscard" id="statusCard">
-      <div class="lbl" id="statLbl">Eingestempelt seit</div>
-      <div class="since" id="statSince">--:--</div>
-      <div class="dur" id="statDur">00:00:00</div>
-      <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
+
+  <!-- Tischplan-/Reservierungs-App im Vollbild -->
+  <iframe id="tischplanFrame" class="tischplan-frame" src="/tischplan" title="Tischplan &amp; Reservierungen" allow="fullscreen; clipboard-write"></iframe>
+
+  <!-- Menü: Ausstempeln, Abläufe, Werkzeuge, Abmelden -->
+  <div class="menu-back" id="menuBack" style="display:none">
+    <div class="menu-karte">
+      <div class="mk-kopf"><span id="mkWho">Servus</span><button class="mk-x" id="mkClose">✕</button></div>
+      <div class="statuscard" id="statusCard">
+        <div class="lbl" id="statLbl">Eingestempelt seit</div>
+        <div class="since" id="statSince">--:--</div>
+        <div class="dur" id="statDur">00:00:00</div>
+        <button class="bigbtn out" id="btnStamp">Ausstempeln</button>
+      </div>
+      <div class="mk-titel">Abläufe</div>
+      <div class="prozesse" id="prozesse"></div>
+      <div class="mk-titel">Werkzeuge</div>
+      <!-- Werkzeug-Karten nach Fähigkeiten der Rolle (data-cap leer = für alle). -->
+      <template id="tplWerkzeuge">
+        <a class="tile werkzeug" href="/team#meine-schichten" data-cap=""><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
+        <a class="tile werkzeug" href="/team#meine-zeiten" data-cap=""><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
+        <a class="tile werkzeug" href="/team#reservierungen" data-cap="reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
+        <a class="tile werkzeug" href="/team#inventur" data-cap="inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
+        <a class="tile werkzeug" href="/team#rezepte" data-cap="rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
+        <a class="tile werkzeug" href="/team#heute" data-cap="auswertung"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
+        <a class="tile werkzeug" href="/team#schichtplan" data-cap="schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
+        <a class="tile werkzeug" href="/team#auswertung" data-cap="auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
+        <a class="tile werkzeug" href="/team#ablaeufe" data-cap="ablaeufe.admin"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Abläufe</span></a>
+        <a class="tile werkzeug" href="/team#karte" data-cap="karte.admin"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
+        <a class="tile werkzeug" href="/team#team" data-cap="team.admin"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
+      </template>
+      <div class="tiles" id="tilesWerkzeuge"></div>
+      <button class="bigbtn" id="btnLogout" style="background:none; border:1px solid var(--line); color:var(--grey); margin-top:18px;">Abmelden</button>
     </div>
-    <template id="tplMitarbeiter">
-      <a class="tile werkzeug" href="/team#meine-schichten"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Meine Schichten</span></a>
-    </template>
-    <template id="tplWerkzeuge">
-      <a class="tile werkzeug" href="/team#meine-zeiten"><span class="ico">${teamIcons.zeiten}</span><span class="t">Meine Zeiten</span></a>
-      <a class="tile werkzeug" href="/team#reservierungen"><span class="ico">${teamIcons.reservierung}</span><span class="t">Reservierungen</span></a>
-      <a class="tile werkzeug" href="/team#inventur"><span class="ico">${teamIcons.inventur}</span><span class="t">Inventur</span></a>
-      <a class="tile werkzeug" href="/team#rezepte"><span class="ico">${teamIcons.drinks}</span><span class="t">Rezepte</span></a>
-    </template>
-    <template id="tplAdmin">
-      <a class="tile werkzeug" href="/team#heute"><span class="ico">${teamIcons.live}</span><span class="t">Heute · Live</span></a>
-      <a class="tile werkzeug" href="/team#schichtplan"><span class="ico">${teamIcons.schichtplan}</span><span class="t">Schichtplan</span></a>
-      <a class="tile werkzeug" href="/team#auswertung"><span class="ico">${teamIcons.auswertung}</span><span class="t">Auswertung</span></a>
-      <a class="tile werkzeug" href="/team#karte"><span class="ico">${teamIcons.handbuch}</span><span class="t">Karte</span></a>
-      <a class="tile werkzeug" href="/team#team"><span class="ico">${teamIcons.team}</span><span class="t">Team</span></a>
-    </template>
-    <div class="tiles" id="tilesWerkzeuge"></div>
-    <div class="tiles-trenner">Bald verfügbar</div>
-    <div class="tiles">
-      <div class="tile soon" data-soon="Aufgaben"><span class="ico">${teamIcons.aufgaben}</span><span class="t">Aufgaben</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Handbuch"><span class="ico">${teamIcons.handbuch}</span><span class="t">Handbuch</span><div class="badge-soon">kommt bald</div></div>
-      <div class="tile soon" data-soon="Anleitungen"><span class="ico">${teamIcons.anleitungen}</span><span class="t">Anleitungen</span><div class="badge-soon">kommt bald</div></div>
+  </div>
+
+  <!-- Vorschlag direkt nach Login -->
+  <div class="vorschlag-back" id="vorschlag" style="display:none">
+    <div class="vorschlag-karte">
+      <div class="vk-titel" id="vkTitel">Bereit für den Aufbau?</div>
+      <p class="vk-text" id="vkText">Sollen wir den Aufbau gemeinsam durchgehen?</p>
+      <button class="vk-primary" id="vkStart">Aufbau starten</button>
+      <button class="vk-secondary" id="vkSpaeter">Später</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ABLAUF (Aufbau / Leerlauf / Abbau) ============ -->
+<section id="screen-ablauf" class="screen">
+  <div class="topbar">
+    <button class="btn-logout" id="abZurueck">‹ Zum Tischplan</button>
+    <div class="who" id="abTitel">Aufbau</div>
+    <div class="ablauf-fortschritt" id="abFort">0/0</div>
+  </div>
+  <div class="ablauf-body" id="ablaufBody"></div>
+  <div class="ablauf-foot">
+    <button class="ablauf-abbruch" id="abUnterbrechen">Aufbau unterbrechen</button>
+  </div>
+
+  <!-- Rote Bestätigung -->
+  <div class="confirm-back" id="abConfirm" style="display:none">
+    <div class="confirm-karte">
+      <div class="ck-titel" id="ckTitel">Aufbau unterbrechen?</div>
+      <p class="ck-text" id="ckText">Es sind noch Aufgaben offen. Der Aufbau bleibt als „offen" markiert – du kannst jederzeit weitermachen.</p>
+      <button class="ck-ja" id="abConfirmJa">Ja, unterbrechen</button>
+      <button class="ck-nein" id="abConfirmNein">Weiter im Aufbau</button>
     </div>
   </div>
 </section>
@@ -229,36 +382,120 @@ function show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.r
 let toastT=null;
 function toast(html,kind,ms){ const t=$("toast"); t.className="toast show"+(kind==="out"?" out":""); t.innerHTML=html; clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),ms||2200); }
 
-/* ---------- PIN-Pad ---------- */
-let entry=""; const dotsEl=$("dots");
-function renderDots(){ dotsEl.querySelectorAll(".dot").forEach((d,i)=>d.classList.toggle("filled",i<entry.length)); }
-function pinFail(){ dotsEl.classList.add("error"); setTimeout(()=>{entry="";dotsEl.classList.remove("error");renderDots();},500); }
-function press(k){
-  if(k==="clear"){ entry=""; dotsEl.classList.remove("error"); renderDots(); return; }
-  if(k==="enter"){ submit(); return; }
-  if(entry.length>=4) return;
-  dotsEl.classList.remove("error"); entry+=k; renderDots();
-  if(entry.length===4) setTimeout(submit,160);
-}
-$("pad").addEventListener("click",e=>{ const k=e.target.closest(".key"); if(k) press(k.dataset.k); });
-window.addEventListener("keydown",e=>{
-  if(!$("screen-login").classList.contains("active")) return;
-  if(e.key>="0"&&e.key<="9") press(e.key);
-  else if(e.key==="Enter") press("enter");
-  else if(e.key==="Backspace"||e.key==="Escape") press("clear");
-});
+/* ---------- Passkey-Anmeldung (WebAuthn) ---------- */
+let current=null; // {id,name,vorname,nachname,role,admin,clockedIn,since,klaerung}
 
-/* ---------- Anmeldung ---------- */
-let current=null; // {id,name,role,pin,clockedIn,since}
-async function submit(){
-  if(entry.length!==4){ pinFail(); return; }
-  const pin=entry; entry=""; renderDots();
-  // Login = Session-Cookie setzen; damit kennt auch das Dashboard die Rolle.
-  const res=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
-  if(!res.ok){ pinFail(); return; }
-  current=await res.json();
-  zeigeEntscheid();
+// base64url <-> ArrayBuffer für die WebAuthn-API.
+const b2a=(s)=>{ s=s.replace(/-/g,"+").replace(/_/g,"/"); const bin=atob(s+"=".repeat((4-s.length%4)%4));
+  const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u.buffer; };
+const a2b=(buf)=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+
+function pkFehler(ziel,text){ $(ziel).textContent=text||""; }
+
+async function pkLogin(){
+  pkFehler("pkFehler","");
+  const knopf=$("btnPkLogin"); knopf.disabled=true;
+  try{
+    const opts=await fetch("/api/passkey/login/optionen",{method:"POST"}).then(r=>r.json());
+    opts.challenge=b2a(opts.challenge);
+    (opts.allowCredentials||[]).forEach(c=>c.id=b2a(c.id));
+    const cred=await navigator.credentials.get({publicKey:opts});
+    const antwort={
+      id:cred.id, rawId:a2b(cred.rawId), type:cred.type,
+      clientExtensionResults:cred.getClientExtensionResults(),
+      response:{
+        clientDataJSON:a2b(cred.response.clientDataJSON),
+        authenticatorData:a2b(cred.response.authenticatorData),
+        signature:a2b(cred.response.signature),
+        userHandle:cred.response.userHandle?a2b(cred.response.userHandle):null,
+      },
+    };
+    const r=await fetch("/api/passkey/login/abschluss",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(antwort)});
+    const d=await r.json();
+    if(!r.ok){ pkFehler("pkFehler",d.fehler||"Anmeldung fehlgeschlagen."); return; }
+    current=d;
+    zeigeEntscheid();
+  }catch(e){
+    if(e.name!=="NotAllowedError") pkFehler("pkFehler","Das hat nicht geklappt: "+e.message);
+  }finally{ knopf.disabled=false; }
 }
+
+// Registrierung: entweder Bootstrap (allererster Passkey = Inhaber) oder per Einladungslink.
+const einladungCode=new URLSearchParams(location.search).get("einladung");
+
+async function pkRegistrieren(){
+  pkFehler("pkRegFehler","");
+  const vorname=$("pkVorname").value.trim(), nachname=$("pkNachname").value.trim();
+  if(!einladungCode && !vorname){ pkFehler("pkRegFehler","Bitte den Vornamen eintragen."); return; }
+  const knopf=$("btnPkRegistrieren"); knopf.disabled=true;
+  try{
+    const r1=await fetch("/api/passkey/registrierung/optionen",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(einladungCode?{einladung:einladungCode}:{vorname,nachname})});
+    const opts=await r1.json();
+    if(!r1.ok){ pkFehler("pkRegFehler",opts.fehler||"Konto konnte nicht angelegt werden."); return; }
+    opts.challenge=b2a(opts.challenge);
+    opts.user.id=b2a(opts.user.id);
+    (opts.excludeCredentials||[]).forEach(c=>c.id=b2a(c.id));
+    const cred=await navigator.credentials.create({publicKey:opts});
+    const antwort={
+      id:cred.id, rawId:a2b(cred.rawId), type:cred.type,
+      clientExtensionResults:cred.getClientExtensionResults(),
+      response:{
+        clientDataJSON:a2b(cred.response.clientDataJSON),
+        attestationObject:a2b(cred.response.attestationObject),
+        transports:cred.response.getTransports?cred.response.getTransports():[],
+      },
+    };
+    const r2=await fetch("/api/passkey/registrierung/abschluss",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(antwort)});
+    const d=await r2.json();
+    if(!r2.ok){ pkFehler("pkRegFehler",d.fehler||"Passkey konnte nicht gespeichert werden."); return; }
+    current=d;
+    $("pkVorname").value=""; $("pkNachname").value="";
+    $("pkRegistrierung").style.display="none"; $("pkStart").style.display="";
+    toast("Willkommen, "+esc(current.vorname)+"! <span class='big'>Passkey eingerichtet</span>","in");
+    zeigeEntscheid();
+  }catch(e){
+    if(e.name!=="NotAllowedError") pkFehler("pkRegFehler","Das hat nicht geklappt: "+e.message);
+  }finally{ knopf.disabled=false; }
+}
+
+$("btnPkLogin").addEventListener("click",pkLogin);
+$("btnPkRegistrieren").addEventListener("click",pkRegistrieren);
+$("btnPkNeuZeigen").addEventListener("click",()=>{ $("pkStart").style.display="none"; $("pkRegistrierung").style.display=""; });
+$("btnPkZurueck").addEventListener("click",()=>{ $("pkRegistrierung").style.display="none"; $("pkStart").style.display=""; });
+
+// Start-Screen je nach Lage: Einladungslink -> Begrüßung; Bootstrap -> Konto erstellen; sonst nur Anmelden.
+(async ()=>{
+  if(einladungCode){
+    const r=await fetch("/api/einladung/"+encodeURIComponent(einladungCode));
+    const d=await r.json();
+    if(!r.ok){ pkFehler("pkFehler",d.fehler||"Einladung ungültig."); $("btnPkNeuZeigen").style.display="none"; return; }
+    $("pkStart").style.display="none"; $("pkRegistrierung").style.display="";
+    $("pkVorname").style.display="none"; $("pkNachname").style.display="none";
+    document.querySelector(".pk-form-titel").textContent="Servus, "+d.vorname+"!";
+    document.querySelector(".pk-form-text").textContent=
+      "Du bist als "+d.role+" eingeladen. Erstell jetzt deinen Passkey – danach meldest du dich damit am Terminal an.";
+    $("btnPkZurueck").style.display="none";
+    return;
+  }
+  const s=await fetch("/api/passkey/status").then(r=>r.json()).catch(()=>({bootstrap:false}));
+  if(s.bootstrap){
+    $("btnPkNeuZeigen").textContent="Erstes Konto anlegen (wird Inhaber)";
+  }else{
+    $("btnPkNeuZeigen").style.display="none";
+    pkFehler("pkFehler","");
+    const hinweis=document.createElement("div");
+    hinweis.style.cssText="margin-top:14px; font-size:13px; color:var(--grey); text-align:center;";
+    hinweis.textContent="Neu im Team? Dein Admin schickt dir einen Einladungslink.";
+    $("pkStart").appendChild(hinweis);
+  }
+})();
+
+// Läuft noch eine Session (Cookie gültig)? Dann direkt zum Entscheid-Screen.
+fetch("/api/session").then(r=>r.ok?r.json():null).then(d=>{ if(d){ current=d; zeigeEntscheid(); } }).catch(()=>{});
 
 /* Vergessenes Ausstempeln: muss vor allem anderen geklärt werden. */
 function zeigeKlaerung(){
@@ -289,7 +526,7 @@ function zeigeEntscheid(){
     $("entStatus").innerHTML="Deine Schicht läuft seit <b>"+hm(current.since)+" Uhr</b>.";
     primary.textContent="Weiter zum Arbeitsbereich";
     primary.className="ent-primary weiter";
-    primary.onclick=()=>{ renderHome(); show("screen-home"); };
+    primary.onclick=()=>{ nachLogin(); };
     secondary.textContent="Schicht beenden & abmelden";
     secondary.className="ent-secondary ende";
     secondary.onclick=async ()=>{
@@ -307,23 +544,27 @@ function zeigeEntscheid(){
       if(!d) return;
       current.clockedIn=true; current.since=d.ts;
       toast("Servus "+esc(current.name)+"! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
-      renderHome(); show("screen-home");
+      nachLogin();
     };
     secondary.textContent="Ohne Stempeln weiter";
     secondary.className="ent-secondary";
-    secondary.onclick=()=>{ renderHome(); show("screen-home"); };
+    secondary.onclick=()=>{ nachLogin(); };
   }
   show("screen-entscheid");
 }
 $("entAbbruch").addEventListener("click",sessionEnde);
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
-  // Werkzeug-Karten nach Rolle: alle sehen Zeiten + Reservierungen, Admins alles.
+  { const w=$("mkWho"); if(w) w.textContent="Servus, "+current.name; }
+  { const mb=$("menuBack"); if(mb) mb.style.display="none"; }
+  // Werkzeug-Karten nach den Fähigkeiten der eigenen Rolle (Capability-Bundles).
+  const caps=current.caps||[];
+  const darf=(c)=>!c||caps.includes("*")||caps.includes(c);
   const ziel=$("tilesWerkzeuge");
   ziel.innerHTML="";
-  if(!current.admin) ziel.appendChild($("tplMitarbeiter").content.cloneNode(true));
-  ziel.appendChild($("tplWerkzeuge").content.cloneNode(true));
-  if(current.admin) ziel.appendChild($("tplAdmin").content.cloneNode(true));
+  const klon=$("tplWerkzeuge").content.cloneNode(true);
+  klon.querySelectorAll("[data-cap]").forEach(a=>{ if(!darf(a.dataset.cap)) a.remove(); });
+  ziel.appendChild(klon);
   if(current.clockedIn){
     $("statLbl").textContent="Eingestempelt seit";
     $("statSince").textContent=hm(current.since)+" Uhr";
@@ -336,6 +577,7 @@ function renderHome(){
     $("btnStamp").textContent="Einstempeln"; $("btnStamp").className="bigbtn in";
   }
   updateDuration();
+  ladeAblaufHome();
 }
 function updateDuration(){
   if(!current||!current.clockedIn) return;
@@ -346,7 +588,7 @@ function updateDuration(){
 
 /* ---------- Ein-/Ausstempeln (Server prüft das ±2-h-Fenster der Schicht) ---------- */
 async function stamp(expected){
-  const r=await fetch("/api/stamp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:current.pin})});
+  const r=await fetch("/api/stamp",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
   const d=await r.json(); // {name,type,ts} oder {fehler,klaerung?}
   if(!r.ok){
     if(d.klaerung){ current.klaerung=d.klaerung; zeigeKlaerung(); }
@@ -378,6 +620,125 @@ $("btnLogout").addEventListener("click",sessionEnde);
 document.querySelectorAll(".tile.soon").forEach(t=>{
   t.addEventListener("click",()=>toast(esc(t.dataset.soon)+" richten wir als Nächstes ein.","",1800));
 });
+
+/* ========== ABENDFÜHRUNG: Aufbau / Leerlauf / Abbau ========== */
+const AB_LABEL={aufbau:"Aufbau",leerlauf:"Aufgaben bei Leerlauf",abbau:"Abbau"};
+const AB_KURZ={aufbau:"Aufbau",leerlauf:"Leerlauf",abbau:"Abbau"};
+function heute(){ const d=new Date(); return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate()); }
+
+/* --- Home: Reservierungs-Hintergrund (Tischplan-Platzhalter) --- */
+async function ladeTischplan(){
+  const bg=$("tischplan-bg"); if(!bg) return;
+  let liste=[], u=null;
+  try{
+    const [a,b]=await Promise.all([
+      fetch("/api/reservierungen?datum="+heute()).then(r=>r.json()),
+      fetch("/api/reservierungen-uebersicht?datum="+heute()).then(r=>r.json()),
+    ]);
+    liste=Array.isArray(a)?a:[]; u=b;
+  }catch(e){ return; }
+  const aktiv=liste.filter(r=>r.status==="offen"||r.status==="bestaetigt");
+  let html='<div class="tp-kopf">Tischplan heute</div>';
+  if(u&&!u.fehler) html+='<div class="tp-kpi">'+(u.gaeste||0)+' Gäste · '+(u.reservierungen||0)+' Reservierungen · drinnen '+(u.drinnen||0)+' / draußen '+(u.draussen||0)+'</div>';
+  if(!aktiv.length) html+='<div class="tp-leer">Heute noch keine Reservierungen.</div>';
+  else for(const r of aktiv){
+    html+='<div class="tp-res"><span class="tp-zeit">'+esc(r.zeit)+'</span><span class="tp-name">'+esc(r.name)+'</span><span class="tp-det">'+r.personen+' Pers. · '+(r.bereich==="draussen"?"Draußen":"Drinnen")+'</span></div>';
+  }
+  bg.innerHTML=html;
+}
+
+/* --- Home: Banner + Prozess-Buttons aus dem Tages-Status --- */
+async function ladeAblaufHome(){
+  let st;
+  try{ st=await fetch("/api/ablauf/status?datum="+heute()).then(r=>r.json()); }catch(e){ return null; }
+  if(!st||st.fehler) return null;
+  const b=$("ablaufBanner");
+  if(st.aufbau.total>0 && !st.aufbau.fertig){
+    b.style.display="";
+    b.innerHTML='<span class="b-txt">Aufbau noch offen · '+st.aufbau.done+'/'+st.aufbau.total+' erledigt</span><span class="b-go">Fortsetzen ›</span>';
+  }else b.style.display="none";
+  $("prozesse").innerHTML=["aufbau","leerlauf","abbau"].map(p=>{
+    const s=st[p]||{done:0,total:0,fertig:false};
+    const ok=s.total>0 && s.fertig;
+    return '<div class="proz'+(ok?" fertig":"")+'" data-proz="'+p+'"><div class="pt">'+AB_KURZ[p]+'</div>'+
+      '<div class="pp'+(ok?" ok":"")+'">'+(s.total?(ok?"✓ fertig":s.done+"/"+s.total):"—")+'</div></div>';
+  }).join("");
+  return st;
+}
+
+/* --- Vorschlag direkt nach Login --- */
+function zeigeVorschlag(st){
+  $("vkText").textContent = st.aufbau.done>0
+    ? "Der Aufbau ist noch nicht fertig ("+st.aufbau.done+"/"+st.aufbau.total+"). Weitermachen?"
+    : "Sollen wir den Aufbau gemeinsam durchgehen?";
+  $("vorschlag").style.display="";
+}
+async function nachLogin(){
+  renderHome(); show("screen-home");
+  const st=await fetch("/api/ablauf/status?datum="+heute()).then(r=>r.json()).catch(()=>null);
+  if(st&&!st.fehler&&st.aufbau.total>0&&!st.aufbau.fertig) zeigeVorschlag(st);
+}
+$("vkStart").addEventListener("click",()=>{ $("vorschlag").style.display="none"; starteAblauf("aufbau"); });
+$("vkSpaeter").addEventListener("click",()=>{ $("vorschlag").style.display="none"; });
+$("ablaufBanner").addEventListener("click",()=>starteAblauf("aufbau"));
+$("prozesse").addEventListener("click",e=>{ const c=e.target.closest("[data-proz]"); if(c){ $("menuBack").style.display="none"; starteAblauf(c.dataset.proz); } });
+
+/* --- HuH-Menü (Ecke) --- */
+$("btnMenu").addEventListener("click",()=>{ $("menuBack").style.display="flex"; });
+$("mkClose").addEventListener("click",()=>{ $("menuBack").style.display="none"; });
+$("menuBack").addEventListener("click",e=>{ if(e.target.id==="menuBack") $("menuBack").style.display="none"; });
+
+/* --- Ablauf-Runner --- */
+let abProzess="aufbau", abDaten=null;
+async function starteAblauf(prozess){
+  abProzess=prozess;
+  $("abTitel").textContent=AB_LABEL[prozess];
+  $("abUnterbrechen").textContent=AB_KURZ[prozess]+" unterbrechen";
+  $("ckTitel").textContent=AB_KURZ[prozess]+" unterbrechen?";
+  await ladeAblauf();
+  show("screen-ablauf");
+}
+async function ladeAblauf(){
+  abDaten=await fetch("/api/ablauf?prozess="+abProzess+"&datum="+heute()).then(r=>r.json());
+  renderAblauf();
+}
+function renderAblauf(){
+  const aufg=(abDaten&&abDaten.aufgaben)||[];
+  const done=aufg.filter(a=>a.erledigt).length;
+  $("abFort").textContent=done+"/"+aufg.length;
+  const aktiv=aufg.find(a=>!a.erledigt);
+  const aktivId=aktiv?aktiv.id:null;
+  let html="", letzteGruppe=null;
+  for(const a of aufg){
+    if(a.gruppe && a.gruppe!==letzteGruppe){ html+='<div class="ab-gruppe">'+esc(a.gruppe)+'</div>'; letzteGruppe=a.gruppe; }
+    const zustand=a.erledigt?"fertig":(a.id===aktivId?"aktiv":"kommt");
+    html+='<div class="ab-task '+zustand+'"><div class="tt"><span class="ab-check">'+(a.erledigt?"✓":"")+'</span>'+esc(a.titel)+'</div>';
+    if(zustand==="aktiv"){
+      if(a.info) html+='<div class="ab-info">'+esc(a.info)+'</div>';
+      html+='<button class="ab-erledigt" data-erledigt="'+a.id+'">Erledigt ✓</button>';
+    }
+    html+='</div>';
+  }
+  $("ablaufBody").innerHTML=html || '<div class="tp-leer" style="padding:20px">Für diesen Ablauf sind noch keine Aufgaben hinterlegt.</div>';
+}
+$("ablaufBody").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-erledigt]"); if(!b) return;
+  b.disabled=true;
+  await fetch("/api/ablauf/erledigt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({aufgabe_id:b.dataset.erledigt,datum:heute()})});
+  await ladeAblauf();
+  const aufg=(abDaten&&abDaten.aufgaben)||[];
+  const rest=aufg.filter(a=>!a.erledigt).length;
+  if(aufg.length>0 && rest===0){
+    if(abProzess==="aufbau") toast("Aufbau fertig! <span class='big'>Der Tischplan ist bereit</span>","in",2600);
+    else toast(AB_KURZ[abProzess]+" abgeschlossen. Danke!","in",2000);
+    setTimeout(zurueckHome,1400);
+  }
+});
+$("abZurueck").addEventListener("click",zurueckHome);
+$("abUnterbrechen").addEventListener("click",()=>{ $("abConfirm").style.display=""; });
+$("abConfirmNein").addEventListener("click",()=>{ $("abConfirm").style.display="none"; });
+$("abConfirmJa").addEventListener("click",()=>{ $("abConfirm").style.display="none"; zurueckHome(); });
+function zurueckHome(){ renderHome(); show("screen-home"); }
 </script>
 </body>
 </html>`;

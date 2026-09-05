@@ -1,0 +1,37 @@
+{
+  "name": "hand-aufs-herz-reservations",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build && npm run build:file",
+    "build:file": "tsx scripts/build-filesystem.ts",
+    "build:e2e": "VITE_ENABLE_TEST_API=true vite build",
+    "preview": "vite preview --host localhost",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "TZ=Europe/Rome vitest run",
+    "test:unit": "TZ=Europe/Rome vitest run tests/unit",
+    "test:playbooks": "TZ=Europe/Rome vitest run tests/playbooks --reporter=verbose",
+    "test:e2e": "npm run build:file && playwright test",
+    "test:e2e:file": "npm run build:file && playwright test tests/e2e/filesystem-build.spec.ts",
+    "test:e2e:guide": "playwright test tests/e2e/user-guide.spec.ts",
+    "test:e2e:headed": "playwright test --headed",
+    "report:playbooks": "TZ=Europe/Rome tsx scripts/run-playbooks.ts",
+    "verify": "npm run check && npm run test:unit && npm run test:playbooks && npm run report:playbooks && npm run test:e2e && npm run build"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@sveltejs/vite-plugin-svelte": "6.2.0",
+    "@types/node": "24.0.0",
+    "svelte": "5.56.5",
+    "svelte-check": "4.3.0",
+    "tsx": "4.20.0",
+    "typescript": "5.9.2",
+    "vite": "7.3.6",
+    "vitest": "3.2.7"
+  }
+}
