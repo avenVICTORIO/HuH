@@ -4,6 +4,7 @@
 // Beide Wege laufen durch dieselben Migrationen – identisches Verhalten, identisches Schema.
 
 import { randomUUID } from "node:crypto";
+import { migrationSql as datenmodellMigration } from "./datenmodell";
 
 export type Mitarbeiter = {
   id: string;
@@ -552,6 +553,14 @@ const MIGRATIONEN: { id: string; sql: string }[] = [
     // Je Schritt die KI-Aufrufe (Systemprompt, Nutzertext, Schema, Rohantwort, Dauer, Retry) als JSON.
     id: "025-skill-schritte-ki",
     sql: /* sql */ `ALTER TABLE skill_schritte ADD COLUMN ki TEXT;`,
+  },
+  {
+    // Fachdaten in den schema-validierten Dokumentenspeicher: Tabellen `schemata` (JSON Schema)
+    // und `dokumente` (JSONB). Die alten Tabellen werden zu _alt_* umbenannt und durch
+    // gleichnamige Views mit INSTEAD-OF-Triggern ersetzt – bestehendes SQL läuft unverändert.
+    // Definition und SQL-Erzeugung: datenmodell.ts.
+    id: "026-dokumentenspeicher",
+    sql: datenmodellMigration(),
   },
 ];
 

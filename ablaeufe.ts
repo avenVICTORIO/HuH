@@ -68,11 +68,14 @@ export async function status(datum: string) {
 }
 
 /** Aufgabe für einen Tag als erledigt markieren (idempotent, hält fest wer/wann). */
-export const erledigtSetzen = (aufgabeId: string, datum: string, von: string | null) =>
-  lauf(
-    "INSERT INTO ablauf_erledigt (id, datum, aufgabe_id, von, am) VALUES (?, ?, ?, ?, ?) ON CONFLICT (datum, aufgabe_id) DO NOTHING",
+export async function erledigtSetzen(aufgabeId: string, datum: string, von: string | null) {
+  // ablauf_erledigt ist eine View auf den Dokumentenspeicher – dort gibt es kein ON CONFLICT.
+  if (await eins("SELECT 1 AS x FROM ablauf_erledigt WHERE datum = ? AND aufgabe_id = ?", datum, aufgabeId)) return { changes: 0 };
+  return lauf(
+    "INSERT INTO ablauf_erledigt (id, datum, aufgabe_id, von, am) VALUES (?, ?, ?, ?, ?)",
     randomUUID(), datum, aufgabeId, von, Date.now(),
   );
+}
 
 /** Erledigt-Haken wieder entfernen. */
 export const erledigtLoeschen = (aufgabeId: string, datum: string) =>
