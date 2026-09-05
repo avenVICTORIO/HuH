@@ -1269,7 +1269,9 @@ async function chatSenden(){
   try{
     const r=await fetch("/api/chat/raum/"+encodeURIComponent(chatAktiv),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
     if(!r.ok){ ta.value=text; alert((await r.json()).fehler||"Senden fehlgeschlagen."); return; }
-    const n=await r.json(); chatNachrichten.push(n); chatLetzteTs=Math.max(chatLetzteTs,n.ts); renderChatVerlauf();
+    const n=await r.json();
+    // Das Live-Ereignis kann schneller sein als die Antwort – nie doppelt anhängen.
+    if(!chatNachrichten.some(x=>x.id===n.id)){ chatNachrichten.push(n); chatLetzteTs=Math.max(chatLetzteTs,n.ts); renderChatVerlauf(); }
     chatLadeRaeume();
   }finally{ $("chatSendenBtn").disabled=false; ta.focus(); }
 }
