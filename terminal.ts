@@ -173,27 +173,6 @@ ${baseCss}
   .ck-ja{display:block; width:100%; border:none; border-radius:16px; padding:18px; background:var(--rot); color:#fff; font-size:clamp(17px,4.6vw,20px); font-weight:700; cursor:pointer; font-family:var(--sans);}
   .ck-nein{display:block; width:100%; margin-top:12px; background:var(--wald); color:#fff; border:none; border-radius:16px; padding:16px; font-size:16px; font-weight:600; cursor:pointer; font-family:var(--sans);}
 
-  /* ---------- ENTSCHEIDUNG (nach Login) ---------- */
-  #screen-entscheid{align-items:center; justify-content:center; padding:4vh 6vw; text-align:center;}
-  .ent-logo{width:96px; height:auto; opacity:.92; margin-bottom:2vh;}
-  .ent-hallo{font-family:var(--serif); font-size:clamp(30px,7vw,44px); color:var(--wald); margin-bottom:.6rem;}
-  .ent-status{font-size:clamp(15px,3.6vw,18px); color:var(--clay); margin:0 0 4vh; max-width:34ch;}
-  .ent-status b{color:var(--wald);}
-  .ent-primary{
-    display:block; width:min(420px,86vw); border:none; border-radius:18px; cursor:pointer;
-    padding:24px; font-family:var(--sans); font-size:clamp(18px,5vw,22px); font-weight:600;
-    color:#fff; letter-spacing:.3px; box-shadow:0 10px 28px -14px rgba(60,74,59,.55);
-  }
-  .ent-primary.start{background:var(--wald);} .ent-primary.start:active{background:#2C382C;}
-  .ent-primary.weiter{background:var(--wald);} .ent-primary.weiter:active{background:#2C382C;}
-  .ent-secondary{
-    display:block; width:min(420px,86vw); margin-top:14px; cursor:pointer;
-    background:none; border:1.5px solid var(--line); border-radius:18px; padding:18px;
-    font-family:var(--sans); font-size:clamp(14px,3.8vw,17px); color:var(--clay);
-  }
-  .ent-secondary.ende{border-color:var(--amber); color:var(--amber); font-weight:600;}
-  .ent-abbruch{margin-top:4vh; background:none; border:none; color:var(--grey); font-size:14px; cursor:pointer; text-decoration:underline; font-family:var(--sans);}
-
   /* ---------- KLÄRUNG (vergessenes Ausstempeln) ---------- */
   #screen-klaerung{align-items:center; justify-content:center; padding:4vh 6vw; text-align:center;}
   .kl-karte{background:var(--card); border:1px solid var(--sand); border-radius:20px; padding:28px 26px; width:min(460px,90vw);}
@@ -264,16 +243,6 @@ ${baseCss}
     </div>
     <button class="kl-bestaetigen" id="klOk">Zeit bestätigen</button>
   </div>
-</section>
-
-<!-- ============ ENTSCHEIDUNG (nach Login) ============ -->
-<section id="screen-entscheid" class="screen">
-  <img class="ent-logo" src="/logo.png" alt="Hand aufs Herz">
-  <div class="ent-hallo" id="entWho">Servus!</div>
-  <p class="ent-status" id="entStatus"></p>
-  <button class="ent-primary" id="entPrimary"></button>
-  <button class="ent-secondary" id="entSecondary"></button>
-  <button class="ent-abbruch" id="entAbbruch">Abbrechen</button>
 </section>
 
 <!-- ============ HOME (nach Login) ============ -->
@@ -415,7 +384,7 @@ async function pkLogin(){
     const d=await r.json();
     if(!r.ok){ pkFehler("pkFehler",d.fehler||"Anmeldung fehlgeschlagen."); return; }
     current=d;
-    zeigeEntscheid();
+    betreten();
   }catch(e){
     if(e.name!=="NotAllowedError") pkFehler("pkFehler","Das hat nicht geklappt: "+e.message);
   }finally{ knopf.disabled=false; }
@@ -456,7 +425,7 @@ async function pkRegistrieren(){
     $("pkVorname").value=""; $("pkNachname").value="";
     $("pkRegistrierung").style.display="none"; $("pkStart").style.display="";
     toast("Willkommen, "+esc(current.vorname)+"! <span class='big'>Passkey eingerichtet</span>","in");
-    zeigeEntscheid();
+    betreten();
   }catch(e){
     if(e.name!=="NotAllowedError") pkFehler("pkRegFehler","Das hat nicht geklappt: "+e.message);
   }finally{ knopf.disabled=false; }
@@ -494,8 +463,8 @@ $("btnPkZurueck").addEventListener("click",()=>{ $("pkRegistrierung").style.disp
   }
 })();
 
-// Läuft noch eine Session (Cookie gültig)? Dann direkt zum Entscheid-Screen.
-fetch("/api/session").then(r=>r.ok?r.json():null).then(d=>{ if(d){ current=d; zeigeEntscheid(); } }).catch(()=>{});
+// Läuft noch eine Session (Cookie gültig)? Dann direkt in den Arbeitsbereich.
+fetch("/api/session").then(r=>r.ok?r.json():null).then(d=>{ if(d){ current=d; betreten(); } }).catch(()=>{});
 
 /* Vergessenes Ausstempeln: muss vor allem anderen geklärt werden. */
 function zeigeKlaerung(){
@@ -514,45 +483,15 @@ $("klOk").addEventListener("click",async ()=>{
   if(!r.ok){ toast(esc(d.fehler||"Das hat nicht geklappt."),"out",2600); return; }
   toast("Danke! <span class='big'>Feierabend "+hm(d.ende)+" Uhr nachgetragen</span>","in");
   current.clockedIn=false; current.since=null; current.klaerung=null;
-  zeigeEntscheid();
+  betreten();
 });
 
-/* Login identifiziert nur – gestempelt wird bewusst, nie automatisch. */
-function zeigeEntscheid(){
+/* Login identifiziert nur – danach direkt in den Arbeitsbereich.
+   Gestempelt wird bewusst über das Menü, nie automatisch. */
+function betreten(){
   if(current.klaerung){ zeigeKlaerung(); return; }
-  $("entWho").textContent="Servus, "+current.name+"!";
-  const primary=$("entPrimary"), secondary=$("entSecondary");
-  if(current.clockedIn){
-    $("entStatus").innerHTML="Deine Schicht läuft seit <b>"+hm(current.since)+" Uhr</b>.";
-    primary.textContent="Weiter zum Arbeitsbereich";
-    primary.className="ent-primary weiter";
-    primary.onclick=()=>{ nachLogin(); };
-    secondary.textContent="Schicht beenden & abmelden";
-    secondary.className="ent-secondary ende";
-    secondary.onclick=async ()=>{
-      const d=await stamp("out");
-      if(!d) return;
-      toast("Pfiat di, "+esc(current.name)+"! <span class='big'>Ausgestempelt "+hm(d.ts)+" Uhr</span>","out");
-      sessionEnde();
-    };
-  }else{
-    $("entStatus").textContent="Schön, dass du da bist. Möchtest du deine Schicht starten?";
-    primary.textContent="Schicht starten";
-    primary.className="ent-primary start";
-    primary.onclick=async ()=>{
-      const d=await stamp("in");
-      if(!d) return;
-      current.clockedIn=true; current.since=d.ts;
-      toast("Servus "+esc(current.name)+"! <span class='big'>Eingestempelt "+hm(d.ts)+" Uhr</span>","in");
-      nachLogin();
-    };
-    secondary.textContent="Ohne Stempeln weiter";
-    secondary.className="ent-secondary";
-    secondary.onclick=()=>{ nachLogin(); };
-  }
-  show("screen-entscheid");
+  nachLogin();
 }
-$("entAbbruch").addEventListener("click",sessionEnde);
 function renderHome(){
   $("homeWho").textContent="Servus, "+current.name;
   { const w=$("mkWho"); if(w) w.textContent="Servus, "+current.name; }
