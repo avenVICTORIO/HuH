@@ -274,7 +274,22 @@ ${baseCss}
   .sk-badge{display:inline-block; margin-left:8px; vertical-align:middle; font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; border-radius:999px; padding:2px 8px; font-family:var(--sans);}
   .sk-badge.system{background:var(--creme); color:var(--clay); border:1px solid var(--line);}
   .sk-badge.component{background:#EEF2EC; color:var(--wald); border:1px solid var(--wald-hell);}
-  .sk-lauf.sk-kind{margin-left:22px; border-style:dashed;}
+  .sk-lauf.sk-kind{margin:10px 0 0 22px; border-style:dashed;}
+  .sk-lauf-akt{margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;}
+  .sk-lauf-kopf .iconbtn{margin-left:0;} a.iconbtn{text-decoration:none; display:inline-block;}
+  .sk-logs{margin-top:10px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--creme);}
+  .sk-log{display:grid; grid-template-columns:72px 120px 66px 60px minmax(0,1fr) auto; gap:10px; align-items:baseline; padding:8px 12px; border-bottom:1px solid var(--line); font-size:13px;}
+  .sk-log:last-child{border-bottom:none;}
+  .sk-log-zeit{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--grey);}
+  .sk-log-actor{font-family:var(--serif); font-size:15px; color:var(--wald);}
+  .sk-log-kind{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--clay);}
+  .sk-log.ask .sk-log-kind{color:var(--amber);} .sk-log.error .sk-log-kind{color:var(--rot);} .sk-log.done .sk-log-kind{color:var(--wald);} .sk-log.call .sk-log-kind,.sk-log.handoff .sk-log-kind{color:var(--wald-hell);}
+  .sk-log-ms{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; color:var(--grey); text-align:right;}
+  .sk-log-text{color:var(--ink); overflow-wrap:anywhere;}
+  .sk-log-raw summary{font-size:11px; color:var(--grey); cursor:pointer; list-style:none;}
+  .sk-log-raw[open]{grid-column:1/-1;}
+  .sk-log-raw pre{margin:6px 0 0; font-size:11px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 10px; max-height:280px; overflow:auto; white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace;}
+  @media (max-width:880px){ .sk-log{grid-template-columns:64px 1fr auto;} .sk-log-kind,.sk-log-ms{display:none;} .sk-log-text{grid-column:1/-1;} }
   @media (max-width:880px){
     .sk-layout{display:flex; flex-direction:column-reverse;}
     .sk-aside{position:static;} .sk-liste{flex-direction:row; overflow-x:auto; padding-bottom:4px;} .sk-karte{min-width:200px;}
@@ -1291,16 +1306,39 @@ function skTabZeigen(){
 async function loadSkLaeufe(){ if(!skAktiv) return; SK_LAEUFE=await fetch("/api/skills/laeufe?flow="+encodeURIComponent(skAktiv)).then(x=>x.json()); renderSkLaeufe(); skMarkiere(); }
 const SK_STATUS={running:["Läuft","in"],waiting:["Wartet auf Antwort","offen"],child:["Wartet auf Baustein","offen"],done:["Fertig","in"],cancelled:["Abgebrochen","out"],error:["Fehler","out"]};
 function renderSkLaeufe(){
-  const liste=SK_LAEUFE.filter(l=>l.flow===skAktiv);
+  const kinder=new Map(); SK_LAEUFE.forEach(l=>{ if(l.parentId){ if(!kinder.has(l.parentId)) kinder.set(l.parentId,[]); kinder.get(l.parentId).push(l); } });
+  const liste=SK_LAEUFE.filter(l=>l.flow===skAktiv&&!l.parentId);
   $("skCount").textContent=liste.length?String(liste.length):"";
-  $("skLaeufe").innerHTML=liste.length?liste.map(l=>{
-    const f=SK_FLOWS.find(x=>x.id===l.flow), st=SK_STATUS[l.status]||[l.status,""];
-    return '<div class="card sk-lauf'+(l.parentId?" sk-kind":"")+'"><div class="sk-lauf-kopf"><b>'+(l.parentId?'↳ ':'')+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
-      '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.createdAt).toISOString().slice(0,10))+' '+hm(l.createdAt)+'</small>'+
-      ((l.status==="running"||l.status==="waiting"||l.status==="child")?'<button class="iconbtn del" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</div>'+
-      '<div class="sk-schritte">'+l.steps.map(s=>{ const a=f&&f.actors.find(x=>x.id===s.actor);
-        return '<span class="sk-schritt '+s.kind+'" title="'+esc(JSON.stringify(s.output)).slice(0,300)+'">'+esc(a?a.name:s.actor)+' <i>'+s.kind+' · '+Math.round(s.ms)+' ms</i></span>'; }).join('<span class="sk-pfeil">›</span>')+'</div></div>';
-  }).join(""):'<div class="empty">Noch keine Läufe – starte den Skill im Chat.</div>';
+  $("skLaeufe").innerHTML=liste.length?liste.map(l=>skLaufKarte(l,kinder,0)).join(""):'<div class="empty">Noch keine Läufe – starte den Skill im Chat.</div>';
+}
+const skZeit=ts=>new Date(ts).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+// Kurztext je Schritt aus dem Actor-Ergebnis.
+function skLogText(o){
+  if(!o||typeof o!=="object") return "";
+  if(o.error) return "Fehler: "+o.error;
+  if(o.ask) return o.ask;
+  if(o.say) return o.say+(o.tell?"  → "+o.tell:"");
+  if(o.done!=null) return o.done||"(still beendet)";
+  if(o.cancel!=null) return o.cancel||"(still abgebrochen)";
+  if(o.call) return "call "+o.call+" → zurück an "+o.then+(o.input&&o.input.question?' · „'+o.input.question+'“':"");
+  if(o.handoff) return "handoff → "+o.handoff;
+  if(o.tell) return "→ "+o.tell+(o.state&&o.state.hint?' · Hinweis: '+o.state.hint:"");
+  return "";
+}
+// Ein Lauf als Log-Liste; Kind-Läufe (z. B. HITL) eingerückt darunter.
+function skLaufKarte(l,kinder,tiefe){
+  const f=SK_FLOWS.find(x=>x.id===l.flow), st=SK_STATUS[l.status]||[l.status,""];
+  const aktiv=(l.status==="running"||l.status==="waiting"||l.status==="child");
+  const zeilen=l.steps.map(s=>{ const a=f&&f.actors.find(x=>x.id===s.actor);
+    return '<div class="sk-log '+s.kind+'"><span class="sk-log-zeit">'+skZeit(s.ts)+'</span><span class="sk-log-actor">'+esc(a?a.name:s.actor)+'</span>'+
+      '<span class="sk-log-kind">'+s.kind+'</span><span class="sk-log-ms">'+Math.round(s.ms)+' ms</span><span class="sk-log-text">'+esc(skLogText(s.output))+'</span>'+
+      '<details class="sk-log-raw"><summary>JSON</summary><pre>'+esc(JSON.stringify({input:s.input,output:s.output},null,1))+'</pre></details></div>'; }).join("");
+  const kids=(kinder.get(l.id)||[]).map(k=>skLaufKarte(k,kinder,tiefe+1)).join("");
+  return '<div class="card sk-lauf'+(tiefe?" sk-kind":"")+'" data-lauf="'+l.id+'"><div class="sk-lauf-kopf"><b>'+(tiefe?'↳ ':'')+esc(f?f.name:l.flow)+'</b><span class="tag '+st[1]+'">'+st[0]+'</span>'+
+    '<small>'+esc(l.person||"")+' · '+datumSchoen(new Date(l.createdAt).toISOString().slice(0,10))+' '+hm(l.createdAt)+' · '+l.steps.length+' Schritte</small>'+
+    '<span class="sk-lauf-akt">'+(tiefe?'':'<a class="iconbtn" href="/api/skills/laeufe/'+l.id+'/export" download title="Vollständiges Log als JSON (Lauf, Schritte mit Ein-/Ausgabe, Flow, Chat-Kontext)">Log exportieren</a><button class="iconbtn" data-skcopy="'+l.id+'">Kopieren</button>')+
+      (aktiv?'<button class="iconbtn del" data-skabbruch="'+l.id+'">Abbrechen</button>':'')+'</span></div>'+
+    '<div class="sk-logs">'+(zeilen||'<div class="empty" style="padding:6px">Noch keine Schritte</div>')+'</div>'+kids+'</div>';
 }
 // Aktuellen Actor des jüngsten aktiven Laufs im Canvas hervorheben.
 function skMarkiere(){
@@ -1319,7 +1357,14 @@ $("skMain").addEventListener("click",async e=>{
   if(!r.ok){ alert((await r.json()).fehler||"Fehler"); return; }
   chatWidget.oeffnen();
 });
-$("skLaeufe").addEventListener("click",async e=>{ const b=e.target.closest("[data-skabbruch]"); if(!b) return; await fetch("/api/skills/laeufe/"+b.dataset.skabbruch,{method:"DELETE"}); loadSkLaeufe(); });
+$("skLaeufe").addEventListener("click",async e=>{
+  const ab=e.target.closest("[data-skabbruch]"); if(ab){ await fetch("/api/skills/laeufe/"+ab.dataset.skabbruch,{method:"DELETE"}); loadSkLaeufe(); return; }
+  const cp=e.target.closest("[data-skcopy]"); if(cp){
+    const j=await fetch("/api/skills/laeufe/"+cp.dataset.skcopy+"/export").then(r=>r.text());
+    try{ await navigator.clipboard.writeText(j); cp.textContent="Kopiert ✓"; }catch(x){ alert("Kopieren nicht möglich – bitte „Log exportieren“ nutzen."); }
+    setTimeout(()=>{ cp.textContent="Kopieren"; },1500);
+  }
+});
 $("skCanvas").addEventListener("load",skMarkiere);
 // Klick auf einen Skill-Knoten im Canvas wechselt zu diesem Skill.
 window.addEventListener("message",e=>{ if(e.data&&e.data.typ==="skill-oeffnen"&&SK_FLOWS.some(f=>f.id===e.data.id)){ skAktiv=e.data.id; skTab="ueberblick"; renderSkills(); loadSkLaeufe(); } });

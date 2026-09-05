@@ -312,7 +312,7 @@ export function catalog() {
 export async function runs(person: Mitarbeiter, seeAll: boolean, flowId: string | null, limit = 40) {
   const cond: string[] = [], params: unknown[] = [];
   if (!seeAll) { cond.push("l.mitarbeiter_id = ?"); params.push(person.id); }
-  if (flowId) { cond.push("l.flow = ?"); params.push(flowId); }
+  if (flowId) { cond.push("(l.flow = ? OR l.eltern_id IN (SELECT id FROM skill_laeufe WHERE flow = ?))"); params.push(flowId, flowId); }
   const where = cond.length ? "WHERE " + cond.join(" AND ") : "";
   const rows = await alle<Run & { person: string }>(
     `SELECT l.*, COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name) AS person
@@ -320,18 +320,52 @@ export async function runs(person: Mitarbeiter, seeAll: boolean, flowId: string 
       ORDER BY l.aktualisiert DESC LIMIT ?`, ...params, limit);
   const ids = rows.map((r) => r.id);
   const steps = ids.length
-    ? await alle<{ lauf_id: string; actor: string; art: string; ausgabe: string; dauer_ms: number; ts: number }>(
-        `SELECT lauf_id, actor, art, ausgabe, dauer_ms, ts FROM skill_schritte WHERE lauf_id IN (${ids.map(() => "?").join(",")}) ORDER BY ts ASC`, ...ids)
+    ? await alle<{ lauf_id: string; actor: string; art: string; eingabe: string; ausgabe: string; dauer_ms: number; ts: number }>(
+        `SELECT lauf_id, actor, art, eingabe, ausgabe, dauer_ms, ts FROM skill_schritte WHERE lauf_id IN (${ids.map(() => "?").join(",")}) ORDER BY ts ASC`, ...ids)
     : [];
-  const parse = (s: string) => { try { return JSON.parse(s); } catch { return s; } };
   return rows.map((r) => ({
     id: r.id, flow: r.flow, status: r.status, person: r.person, room: r.raum,
     createdAt: Number(r.erstellt), updatedAt: Number(r.aktualisiert), currentActor: r.aktueller_actor,
-    parentId: r.eltern_id, state: parse(r.zustand || "{}"),
+    parentId: r.eltern_id, state: parseJson(r.zustand || "{}"),
     steps: steps.filter((s) => s.lauf_id === r.id).map((s) => ({
-      actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), ts: Number(s.ts), output: parse(s.ausgabe),
+      actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), ts: Number(s.ts), input: parseJson(s.eingabe), output: parseJson(s.ausgabe),
     })),
   }));
+}
+const parseJson = (s: string | null) => { if (s == null) return null; try { return JSON.parse(s); } catch { return s; } };
+
+/**
+ * Full log bundle of one run for feedback/debugging: run + steps (input/output), child
+ * runs recursively, the flow definition, and the chat messages around the run.
+ */
+export async function exportRun(id: string, person: Mitarbeiter, mayAll: boolean) {
+  const run = await eins<Run & { person: string }>(
+    `SELECT l.*, COALESCE(NULLIF(TRIM(CONCAT(m.vorname, ' ', COALESCE(m.nachname, ''))), ''), m.name) AS person
+       FROM skill_laeufe l LEFT JOIN mitarbeiter m ON m.id = l.mitarbeiter_id WHERE l.id = ?`, id);
+  if (!run || (run.mitarbeiter_id !== person.id && !mayAll)) return null;
+  const bundle = async (r: Run): Promise<Record<string, unknown>> => {
+    const steps = await alle<{ actor: string; art: string; eingabe: string; ausgabe: string; dauer_ms: number; ts: number }>(
+      "SELECT actor, art, eingabe, ausgabe, dauer_ms, ts FROM skill_schritte WHERE lauf_id = ? ORDER BY ts ASC", r.id);
+    const children = await alle<Run>("SELECT * FROM skill_laeufe WHERE eltern_id = ? ORDER BY erstellt ASC", r.id);
+    return {
+      id: r.id, flow: r.flow, flowName: flowById(r.flow)?.name ?? r.flow, status: r.status, currentActor: r.aktueller_actor,
+      createdAt: Number(r.erstellt), updatedAt: Number(r.aktualisiert), returnActor: r.rueckkehr_actor,
+      state: parseJson(r.zustand || "{}"),
+      steps: steps.map((s) => ({ ts: Number(s.ts), actor: s.actor, kind: s.art, ms: Number(s.dauer_ms), input: parseJson(s.eingabe), output: parseJson(s.ausgabe) })),
+      children: await Promise.all(children.map(bundle)),
+    };
+  };
+  const root = await bundle(run);
+  const chatContext = await chat.nachrichtenZwischen(run.raum, Number(run.erstellt) - 120000, Number(run.aktualisiert) + 120000);
+  return {
+    exportedAt: new Date().toISOString(),
+    app: { model: process.env.KI_MODELL ?? "qwen/qwen3.8-27b", aiActive: ki.aktiv },
+    person: { id: run.mitarbeiter_id, name: run.person },
+    room: run.raum,
+    flowDefinition: catalog().find((f) => f.id === run.flow) ?? null,
+    run: root,
+    chat: chatContext.map((n) => ({ ts: n.ts, from: n.ki ? "assistant" : n.von_name, text: n.text })),
+  };
 }
 
 /**
